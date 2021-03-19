@@ -1,0 +1,10 @@
+[package]
+name = "miniml"
+version = "0.1.0"
+authors = ["Kári Frederiksen <karifrederiksen@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rpds = "0.9"
