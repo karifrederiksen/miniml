@@ -10,13 +10,13 @@ pub enum Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Literal::Bool(true) => {
+            Self::Bool(true) => {
                 write!(f, "True")
             }
-            Literal::Bool(false) => {
+            Self::Bool(false) => {
                 write!(f, "False")
             }
-            Literal::Int(x) => {
+            Self::Int(x) => {
                 write!(f, "{}", x)
             }
         }
@@ -26,24 +26,24 @@ impl fmt::Display for Literal {
 pub fn bool_(x: bool) -> Literal {
     Literal::Bool(x)
 }
-pub fn bool_expr(x: bool) -> Expression {
-    Expression::Literal(bool_(x))
+pub fn bool_expr(x: bool) -> Expr {
+    Expr::Literal(bool_(x))
 }
 pub fn integer(x: i128) -> Literal {
     Literal::Int(x)
 }
-pub fn integer_expr(x: i128) -> Expression {
-    Expression::Literal(integer(x))
+pub fn integer_expr(x: i128) -> Expr {
+    Expr::Literal(integer(x))
 }
 
-pub fn sym_expr<S: Into<String>>(x: S) -> Expression {
-    Expression::Symbol(sym(x))
+pub fn sym_expr<S: Into<String>>(x: S) -> Expr {
+    Expr::Symbol(sym(x))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
     pub bind: Symbol,
-    pub expr: Box<Expression>,
+    pub expr: Box<Expr>,
 }
 
 impl fmt::Display for Function {
@@ -51,87 +51,64 @@ impl fmt::Display for Function {
         write!(f, "(\\{} -> {})", self.bind, self.expr)
     }
 }
-pub fn func(bind: Symbol, expr: Expression) -> Function {
+pub fn func(bind: Symbol, expr: Expr) -> Function {
     Function {
         bind,
         expr: Box::new(expr),
     }
 }
 
-pub fn func_expr(bind: Symbol, expr: Expression) -> Expression {
-    Expression::Function(func(bind, expr))
+pub fn func_expr(bind: Symbol, expr: Expr) -> Expr {
+    Expr::Function(func(bind, expr))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pair(pub Box<Expression>, pub Box<Expression>);
+pub struct Let {
+    pub bind: Symbol,
+    pub bind_expr: Box<Expr>,
+    pub next_expr: Box<Expr>,
+}
 
-impl fmt::Display for Pair {
+impl fmt::Display for Let {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}, {}]", self.0, self.1)
-    }
-}
-
-pub fn pair(l: Expression, r: Expression) -> Pair {
-    Pair(Box::new(l), Box::new(r))
-}
-
-pub fn pair_expr(l: Expression, r: Expression) -> Expression {
-    Expression::Pair(pair(l, r))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Application {
-    Normal {
-        func: Box<Expression>,
-        arg: Box<Expression>,
-    },
-    Builtin {
-        func: Symbol,
-        arg: Box<Expression>,
-    },
-}
-
-impl fmt::Display for Application {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Normal { func, arg } => {
-                write!(f, "({} {})", func, arg)?;
-            }
-            Self::Builtin { func, arg } => {
-                write!(f, "({} {})", func, arg)?;
-            }
-        }
+        write!(
+            f,
+            "let {} = {} in {}",
+            self.bind, self.bind_expr, self.next_expr
+        )?;
         Ok(())
     }
 }
 
-pub fn appl(f: Expression, a: Expression) -> Application {
-    Application::Normal {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Appl {
+    pub func: Box<Expr>,
+    pub arg: Box<Expr>,
+}
+
+impl fmt::Display for Appl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({} {})", self.func, self.arg)?;
+        Ok(())
+    }
+}
+
+pub fn appl(f: Expr, a: Expr) -> Appl {
+    Appl {
         func: Box::new(f),
         arg: Box::new(a),
     }
 }
 
-pub fn appl_expr(f: Expression, a: Expression) -> Expression {
-    Expression::Application(appl(f, a))
-}
-
-pub fn appl_builtin(func: Symbol, arg: Expression) -> Application {
-    Application::Builtin {
-        func,
-        arg: Box::new(arg),
-    }
-}
-
-pub fn appl_builtin_expr(func: Symbol, arg: Expression) -> Expression {
-    Expression::Application(appl_builtin(func, arg))
+pub fn appl_expr(f: Expr, a: Expr) -> Expr {
+    Expr::Appl(appl(f, a))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IfElse {
-    pub expr: Box<Expression>,
-    pub case_true: Box<Expression>,
-    pub case_false: Box<Expression>,
+    pub expr: Box<Expr>,
+    pub case_true: Box<Expr>,
+    pub case_false: Box<Expr>,
 }
 
 impl fmt::Display for IfElse {
@@ -143,8 +120,8 @@ impl fmt::Display for IfElse {
         )
     }
 }
-pub fn if_else_expr(expr: Expression, case_true: Expression, case_false: Expression) -> Expression {
-    Expression::IfElse(IfElse {
+pub fn if_else_expr(expr: Expr, case_true: Expr, case_false: Expr) -> Expr {
+    Expr::IfElse(IfElse {
         expr: Box::new(expr),
         case_true: Box::new(case_true),
         case_false: Box::new(case_false),
@@ -152,40 +129,108 @@ pub fn if_else_expr(expr: Expression, case_true: Expression, case_false: Express
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expression {
+pub enum Expr {
     Symbol(Symbol),
     Literal(Literal),
-    Pair(Pair),
     Function(Function),
-    Application(Application),
+    Let(Let),
+    Appl(Appl),
     IfElse(IfElse),
 }
 
-impl fmt::Display for Expression {
+impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Symbol(x) => {
+            Self::Symbol(x) => {
                 write!(f, "{}", x)
             }
-            Expression::Literal(x) => {
+            Self::Literal(x) => {
                 write!(f, "{}", x)
             }
-            Expression::Pair(x) => {
+            Self::Function(x) => {
                 write!(f, "{}", x)
             }
-            Expression::Function(x) => {
+            Self::Let(x) => {
                 write!(f, "{}", x)
             }
-            Expression::Application(x) => {
+            Self::Appl(x) => {
                 write!(f, "{}", x)
             }
-            Expression::IfElse(x) => {
+            Self::IfElse(x) => {
                 write!(f, "{}", x)
             }
         }
     }
 }
 
-pub fn pretty_print_expr(expr: &Expression) -> String {
+pub fn pretty_print_expr(expr: &Expr) -> String {
     format!("{}", expr)
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum BasicType {
+    Bool,
+    Int,
+}
+
+impl fmt::Display for BasicType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bool => {
+                write!(f, "Bool")
+            }
+            Self::Int => {
+                write!(f, "Int")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FunctionType {
+    pub arg: Type,
+    pub return_: Type,
+}
+
+impl fmt::Display for FunctionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.arg, self.return_)
+    }
+}
+
+fn u32_to_ascii(n: u32) -> String {
+    let mut s = String::new();
+    let mut n = n;
+    while n > 0 {
+        let c = (96 + (n % 26)) as u8;
+        s.push(c as char);
+        n = n / 26;
+    }
+    s
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct VariableType(u32);
+
+impl fmt::Display for VariableType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", u32_to_ascii(self.0))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Type {
+    Basic(BasicType),
+    Func(Box<FunctionType>),
+    Var(VariableType),
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Basic(x) => write!(f, "{}", x),
+            Self::Func(x) => write!(f, "{}", x),
+            Self::Var(x) => write!(f, "{}", x),
+        }
+    }
 }

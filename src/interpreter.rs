@@ -1,13 +1,13 @@
 use crate::ast;
-use crate::prelude::{sym, Symbol};
-use ast::{Application, Expression, Literal, Pair};
+use crate::prelude::Symbol;
+use ast::{Appl, Expr, Literal};
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct StackFrame {
-    bindings: HashTrieMap<Symbol, Expression>,
+    bindings: HashTrieMap<Symbol, Expr>,
     previous: Rc<Stack>,
 }
 
@@ -22,7 +22,7 @@ impl Stack {
         Rc::new(Self::Empty)
     }
 
-    pub fn next(self: Rc<Self>, bind: Symbol, value: Expression) -> Rc<Self> {
+    pub fn next(self: Rc<Self>, bind: Symbol, value: Expr) -> Rc<Self> {
         let stack = match self.borrow() {
             Self::Empty => Self::Frame(StackFrame {
                 bindings: HashTrieMap::new().insert(bind, value),
@@ -43,7 +43,7 @@ impl Stack {
         }
     }
 
-    pub fn get(&self, bind: &Symbol) -> Option<&Expression> {
+    pub fn get(&self, bind: &Symbol) -> Option<&Expr> {
         match self {
             Self::Empty => None,
             Self::Frame(x) => x.bindings.get(bind),
@@ -56,46 +56,6 @@ pub struct Interpreter {
     stack: Rc<Stack>,
 }
 
-macro_rules! int_operator {
-    ($name: literal, $arg: expr, $f: ident) => {
-        match $arg {
-            Expression::Pair(Pair(l, r)) => match (*l, *r) {
-                (Expression::Literal(Literal::Int(l)), Expression::Literal(Literal::Int(r))) => {
-                    Expression::Literal($f(l, r))
-                }
-                _ => panic!("unexpected argument type"),
-            },
-            Expression::Literal(l) => ast::func_expr(
-                sym("r"),
-                ast::appl_builtin_expr(
-                    sym($name),
-                    ast::pair_expr(Expression::Literal(l), ast::sym_expr("r")),
-                ),
-            ),
-            _ => panic!("unexpected argument type"),
-        }
-    };
-}
-
-macro_rules! literal_operator {
-    ($name: literal, $arg: expr, $f: ident) => {
-        match $arg {
-            Expression::Pair(Pair(l, r)) => match (*l, *r) {
-                (Expression::Literal(l), Expression::Literal(r)) => Expression::Literal($f(l, r)),
-                _ => panic!("unexpected argument type"),
-            },
-            Expression::Literal(l) => ast::func_expr(
-                sym("r"),
-                ast::appl_builtin_expr(
-                    sym($name),
-                    ast::pair_expr(Expression::Literal(l), ast::sym_expr("r")),
-                ),
-            ),
-            _ => panic!("unexpected argument type"),
-        }
-    };
-}
-
 impl Interpreter {
     pub fn new() -> Self {
         Self {
@@ -103,7 +63,7 @@ impl Interpreter {
         }
     }
 
-    fn enter_func(&mut self, bind: Symbol, value: Expression) {
+    fn enter_func(&mut self, bind: Symbol, value: Expr) {
         self.stack = self.stack.clone().next(bind, value);
     }
 
@@ -111,36 +71,36 @@ impl Interpreter {
         self.stack = self.stack.clone().previous();
     }
 
-    fn get(&self, sym: &Symbol) -> Option<&Expression> {
+    fn get(&self, sym: &Symbol) -> Option<&Expr> {
         match self.stack.get(sym) {
             Some(x) => Some(x),
             None => None,
         }
     }
 
-    pub fn eval(&mut self, expr: &Expression) -> Expression {
+    pub fn eval(&mut self, expr: &Expr) -> Expr {
         match expr {
-            Expression::Literal(x) => Expression::Literal(*x),
-            Expression::Symbol(x) => self
-                .get(x)
-                .expect(&format!("symbol used before it was declared: \"{}\"", x))
-                .clone(),
-            Expression::IfElse(x) => {
-                if self.eval(&x.expr) == Expression::Literal(Literal::Bool(true)) {
+            Expr::Literal(x) => Expr::Literal(*x),
+            Expr::Symbol(x) => {
+                if ["eq", "sub", "mul"].contains(&x.0.as_ref()) {
+                    todo!("handle built-in - might need to change the ast")
+                }
+                self.get(x)
+                    .expect(&format!("symbol used before it was declared: \"{}\"", x))
+                    .clone()
+            }
+            Expr::IfElse(x) => {
+                if self.eval(&x.expr) == Expr::Literal(Literal::Bool(true)) {
                     self.eval(&x.case_true)
                 } else {
                     self.eval(&x.case_false)
                 }
             }
-            Expression::Pair(Pair(l, r)) => {
-                let l = self.eval(&l);
-                let r = self.eval(&r);
-                Expression::Pair(Pair(Box::new(l), Box::new(r)))
-            }
-            Expression::Function(x) => Expression::Function(x.clone()),
-            Expression::Application(Application::Normal { func, arg }) => {
+            Expr::Function(x) => Expr::Function(x.clone()),
+            Expr::Let(_) => todo!(),
+            Expr::Appl(Appl { func, arg }) => {
                 let e = match self.eval(&func) {
-                    Expression::Function(x) => {
+                    Expr::Function(x) => {
                         let arg = self.eval(&arg);
                         self.enter_func(x.bind, arg);
                         let e = self.eval(&x.expr);
@@ -151,12 +111,6 @@ impl Interpreter {
                 };
                 return e;
             }
-            Expression::Application(Application::Builtin { func, arg }) => match func.0.as_ref() {
-                "==" => literal_operator!("==", self.eval(arg), eq),
-                "*" => int_operator!("*", self.eval(arg), mul),
-                "-" => int_operator!("-", self.eval(arg), sub),
-                _ => panic!("undefined builtin: {}", func.0),
-            },
         }
     }
 }
