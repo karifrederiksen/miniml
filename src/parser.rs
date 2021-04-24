@@ -3,7 +3,7 @@ use nom::branch;
 use nom::bytes::complete::*;
 use nom::character::complete as character;
 use nom::combinator;
-use nom::combinator::{map, map_res};
+use nom::combinator::{map, map_res, recognize};
 use nom::error::context;
 use nom::multi;
 use nom::sequence;
@@ -16,12 +16,20 @@ fn is_space_or_lf(c: char) -> bool {
     " \t\n\r".contains(c)
 }
 
-fn space_lf0(s: &str) -> IResult<&str, ()> {
-    let mut p = map(multi::many0(character::satisfy(is_space_or_lf)), |_| ());
+fn space_lf0(s: &str) -> IResult<&str, &str> {
+    let mut p = recognize(multi::many0(branch::alt((
+        recognize(character::satisfy(is_space_or_lf)),
+        parse_line_comment,
+        parse_multiline_comment,
+    ))));
     p(s)
 }
-fn space_lf1(s: &str) -> IResult<&str, ()> {
-    let mut p = map(multi::many1(character::satisfy(is_space_or_lf)), |_| ());
+fn space_lf1(s: &str) -> IResult<&str, &str> {
+    let mut p = recognize(multi::many1(branch::alt((
+        recognize(character::satisfy(is_space_or_lf)),
+        parse_line_comment,
+        parse_multiline_comment,
+    ))));
     p(s)
 }
 
@@ -81,25 +89,33 @@ fn parse_sym_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context("Symbol", map(parse_sym, Expr::Symbol));
     p(s)
 }
-fn parse_line_comment(s: &str) -> IResult<&str, ()> {
+fn parse_line_comment(s: &str) -> IResult<&str, &str> {
+    // todo: do this properly
     let mut p = context(
         "LineComment",
-        map(
-            sequence::terminated(
-                sequence::preceded(tag("--"), character::anychar),
-                character::newline,
-            ),
-            |_| (),
-        ),
+        recognize(sequence::tuple((
+            tag("--"),
+            multi::many0(branch::alt((
+                space_lf1,
+                character::alphanumeric1,
+                recognize(character::one_of(",.;:!?")),
+            ))),
+            character::newline,
+        ))),
     );
     p(s)
 }
-fn parse_multiline_comment(s: &str) -> IResult<&str, ()> {
-    // todo: allow nested comments - the end tag for nested would currently end the top
-    let mut p = map(
-        sequence::terminated(sequence::preceded(tag("{-"), character::anychar), tag("-}")),
-        |_| (),
-    );
+fn parse_multiline_comment(s: &str) -> IResult<&str, &str> {
+    // todo: do this properly
+    let mut p = recognize(sequence::tuple((
+        tag("{-"),
+        multi::many0(branch::alt((
+            space_lf1,
+            character::alphanumeric1,
+            recognize(character::one_of(",.;:!?")),
+        ))),
+        tag("-}"),
+    )));
     p(s)
 }
 fn parse_if_else_expr(s: &str) -> IResult<&str, Expr> {

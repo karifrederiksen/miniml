@@ -11,6 +11,7 @@ pub mod prelude;
 fn factorial_expr(n: i32) -> ast::Expr {
     let src: String = format!(
         "
+{{- should probably make a prelude with this -}}
 let eq = \\l -> \\r -> builtin_eq (l, r) in
 let add = \\l -> \\r -> builtin_add (l, r) in
 let sub = \\l -> \\r -> builtin_sub (l, r) in
@@ -19,7 +20,7 @@ let mul = \\l -> \\r -> builtin_mul (l, r) in
 let fact =
     \\n ->
         if eq n 0 then
-            (1, 0)
+            1
         else
             mul n (fact (sub n 1))
 in
@@ -32,11 +33,11 @@ fact {}
 }
 
 fn main() {
-    let ast: ast::Expr = factorial_expr(30);
+    let ast: ast::Expr = factorial_expr(4);
     println!("{}\n\n", ast);
 
-    // let mut interp = interpreter::Interpreter::new();
-    // println!("{}\n\n", interp.eval(&ast));
+    let mut interp = interpreter::Interpreter::new();
+    println!("{}\n\n", interp.eval(&ast));
 }
 
 #[cfg(test)]

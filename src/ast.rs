@@ -73,7 +73,7 @@ impl fmt::Display for Let {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "let {} = {} in {}",
+            "let {} = {} in\n{}",
             self.bind, self.bind_expr, self.next_expr
         )?;
         Ok(())
@@ -256,5 +256,19 @@ impl fmt::Display for Type {
             Self::Func(x) => write!(f, "{}", x),
             Self::Var(x) => write!(f, "{}", x),
         }
+    }
+}
+
+pub fn desugar_let(expr: &mut Expr) {
+    match expr {
+        Expr::Let(Let {
+            bind: _,
+            bind_expr: _,
+            next_expr: _,
+        }) => {
+            //
+            todo!()
+        }
+        _ => {}
     }
 }
