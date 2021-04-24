@@ -1,46 +1,55 @@
 use crate::ast;
 use crate::prelude::Symbol;
-use ast::{Appl, Expr, Literal};
+use ast::{Appl, Expr, Literal, Tuple};
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StackFrame {
     bindings: HashTrieMap<Symbol, Expr>,
-    previous: Rc<Stack>,
+    previous: Box<Stack>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stack {
     Empty,
     Frame(StackFrame),
 }
 
 impl Stack {
-    pub fn new() -> Rc<Self> {
-        Rc::new(Self::Empty)
+    pub fn new() -> Self {
+        Self::Empty
     }
 
-    pub fn next(self: Rc<Self>, bind: Symbol, value: Expr) -> Rc<Self> {
-        let stack = match self.borrow() {
+    pub fn enter_frame(&mut self) {
+        *self = match self {
             Self::Empty => Self::Frame(StackFrame {
-                bindings: HashTrieMap::new().insert(bind, value),
-                previous: self,
+                bindings: HashTrieMap::new(),
+                previous: Box::new(Stack::Empty),
             }),
             Self::Frame(x) => Self::Frame(StackFrame {
-                bindings: x.bindings.insert(bind, value),
-                previous: self,
+                bindings: x.bindings.clone(),
+                previous: Box::new(self.clone()),
             }),
         };
-        Rc::new(stack)
     }
 
-    pub fn previous(self: Rc<Self>) -> Rc<Self> {
-        match self.borrow() {
-            Self::Empty => Rc::new(Self::Empty),
-            Self::Frame(x) => x.previous.clone(),
-        }
+    pub fn bind(&mut self, bind: Symbol, value: Expr) {
+        *self = match self {
+            Self::Empty => panic!("no frame"),
+            Self::Frame(x) => Self::Frame(StackFrame {
+                bindings: x.bindings.insert(bind, value),
+                previous: x.previous.clone(),
+            }),
+        };
+    }
+
+    pub fn exit_frame(&mut self) {
+        *self = match self {
+            Self::Empty => panic!("no frame to exit"),
+            Self::Frame(x) => *x.previous.clone(),
+        };
     }
 
     pub fn get(&self, bind: &Symbol) -> Option<&Expr> {
@@ -53,7 +62,7 @@ impl Stack {
 
 #[derive(Debug)]
 pub struct Interpreter {
-    stack: Rc<Stack>,
+    stack: Stack,
 }
 
 impl Interpreter {
@@ -63,14 +72,6 @@ impl Interpreter {
         }
     }
 
-    fn enter_func(&mut self, bind: Symbol, value: Expr) {
-        self.stack = self.stack.clone().next(bind, value);
-    }
-
-    fn exit_func(&mut self) {
-        self.stack = self.stack.clone().previous();
-    }
-
     fn get(&self, sym: &Symbol) -> Option<&Expr> {
         match self.stack.get(sym) {
             Some(x) => Some(x),
@@ -78,16 +79,81 @@ impl Interpreter {
         }
     }
 
+    fn is_builtin(sy: &Symbol) -> bool {
+        sy.0.starts_with("builtin_")
+    }
+
+    fn eval_builtin_tup2(&mut self, x: &Expr) -> (Expr, Expr) {
+        match self.eval(x) {
+            Expr::Tuple(t) if t.exprs.len() == 2 => (
+                t.exprs.get(0).unwrap().clone(),
+                t.exprs.get(1).unwrap().clone(),
+            ),
+            _ => panic!("a"),
+        }
+    }
+    fn eval_builtin_int_int<F, O>(&mut self, x: &Expr, f: F) -> O
+    where
+        F: FnOnce(i128, i128) -> O,
+    {
+        match self.eval_builtin_tup2(x) {
+            (Expr::Literal(Literal::Int(l)), Expr::Literal(Literal::Int(r))) => f(l, r),
+            (l, r) => panic!(
+                "type mismatch. expected expression of type (Int, Int), found: ({}, {})",
+                l, r
+            ),
+        }
+    }
+    fn eval_builtin_bool_bool<F, O>(&mut self, x: &Expr, f: F) -> O
+    where
+        F: FnOnce(bool, bool) -> O,
+    {
+        match self.eval_builtin_tup2(x) {
+            (Expr::Literal(Literal::Bool(l)), Expr::Literal(Literal::Bool(r))) => f(l, r),
+            (l, r) => panic!(
+                "type mismatch. expected expression of type (Bool, Bool), found: ({}, {})",
+                l, r
+            ),
+        }
+    }
+    fn eval_builtin_bool<F, O>(&mut self, x: &Expr, f: F) -> O
+    where
+        F: FnOnce(bool) -> O,
+    {
+        match self.eval(x) {
+            Expr::Literal(Literal::Bool(x)) => f(x),
+            _ => panic!(
+                "type mismatch. expected expression of type Bool, found: {}",
+                x
+            ),
+        }
+    }
+
+    fn eval_builtin(&mut self, sy: &Symbol, x: &Expr) -> Expr {
+        match &sy.0[8..] {
+            "eq" => self.eval_builtin_int_int(x, |l, r| Expr::Literal(Literal::Bool(l == r))),
+            "add" => self.eval_builtin_int_int(x, |l, r| Expr::Literal(Literal::Int(l + r))),
+            "sub" => self.eval_builtin_int_int(x, |l, r| Expr::Literal(Literal::Int(l - r))),
+            "mul" => self.eval_builtin_int_int(x, |l, r| Expr::Literal(Literal::Int(l * r))),
+            "div" => self.eval_builtin_int_int(x, |l, r| Expr::Literal(Literal::Int(l / r))),
+            "and" => self.eval_builtin_bool_bool(x, |l, r| Expr::Literal(Literal::Bool(l && r))),
+            "or" => self.eval_builtin_bool_bool(x, |l, r| Expr::Literal(Literal::Bool(l || r))),
+            "not" => self.eval_builtin_bool(x, |x| Expr::Literal(Literal::Bool(!x))),
+            _ => panic!("unknown builtin: {}", sy),
+        }
+    }
+
     pub fn eval(&mut self, expr: &Expr) -> Expr {
         match expr {
             Expr::Literal(x) => Expr::Literal(*x),
             Expr::Symbol(x) => {
-                if ["eq", "sub", "mul"].contains(&x.0.as_ref()) {
-                    todo!("handle built-in - might need to change the ast")
+                if Self::is_builtin(x) {
+                    expr.clone()
+                } else {
+                    self.get(x)
+                        .expect(&format!("symbol used before it was declared: \"{}\"", x))
+                        .clone()
                 }
-                self.get(x)
-                    .expect(&format!("symbol used before it was declared: \"{}\"", x))
-                    .clone()
             }
             Expr::IfElse(x) => {
                 if self.eval(&x.expr) == Expr::Literal(Literal::Bool(true)) {
@@ -97,19 +163,39 @@ impl Interpreter {
                 }
             }
             Expr::Function(x) => Expr::Function(x.clone()),
-            Expr::Let(_) => todo!(),
+            Expr::Let(x) => {
+                self.stack.enter_frame();
+                let bind_expr = self.eval(&*x.bind_expr);
+                self.stack.bind(x.bind.clone(), bind_expr);
+                let value = self.eval(&*x.next_expr);
+                self.stack.exit_frame();
+                value
+            }
             Expr::Appl(Appl { func, arg }) => {
-                let e = match self.eval(&func) {
+                let func_expr = self.eval(func);
+                let arg_expr = self.eval(arg);
+                match &func_expr {
+                    Expr::Symbol(sy) if Self::is_builtin(sy) => {
+                        return self.eval_builtin(sy, &arg_expr);
+                    }
+                    _ => {}
+                };
+                match func_expr {
                     Expr::Function(x) => {
-                        let arg = self.eval(&arg);
-                        self.enter_func(x.bind, arg);
+                        self.stack.enter_frame();
+                        println!("binding {} with value {}", x.bind, arg_expr);
+                        self.stack.bind(x.bind.clone(), arg_expr);
                         let e = self.eval(&x.expr);
-                        self.exit_func();
+                        self.stack.exit_frame();
+                        println!("unbinding {}", x.bind);
                         e
                     }
                     _ => panic!("expected function, found: {}", func),
-                };
-                return e;
+                }
+            }
+            Expr::Tuple(Tuple { exprs }) => {
+                let exprs: Vec<Expr> = exprs.iter().map(|e| self.eval(e)).collect();
+                Expr::Tuple(Tuple { exprs })
             }
         }
     }

@@ -9,18 +9,18 @@ use nom::multi;
 use nom::sequence;
 use nom::IResult;
 
-use crate::ast::{Appl, Expr, Function, IfElse, Let, Literal};
+use crate::ast::{Appl, Expr, Function, IfElse, Let, Literal, Tuple};
 use crate::prelude::{sym, Symbol};
 
 fn is_space_or_lf(c: char) -> bool {
     " \t\n\r".contains(c)
 }
 
-fn spaceLf0(s: &str) -> IResult<&str, ()> {
+fn space_lf0(s: &str) -> IResult<&str, ()> {
     let mut p = map(multi::many0(character::satisfy(is_space_or_lf)), |_| ());
     p(s)
 }
-fn spaceLf1(s: &str) -> IResult<&str, ()> {
+fn space_lf1(s: &str) -> IResult<&str, ()> {
     let mut p = map(multi::many1(character::satisfy(is_space_or_lf)), |_| ());
     p(s)
 }
@@ -50,8 +50,11 @@ fn is_not_reserved(s: &str) -> bool {
     !RESERVED_SYMBOLS.contains(&s)
 }
 
-fn is_sym_char(c: char) -> bool {
+fn is_sym_char_first(c: char) -> bool {
     "_abcdefghijklmnopqrstuvwxyz".contains(c)
+}
+fn is_sym_char_after(c: char) -> bool {
+    "_abcdefghijklmnopqrstuvwxyz0123456789".contains(c)
 }
 
 fn parse_sym(s: &str) -> IResult<&str, Symbol> {
@@ -59,8 +62,14 @@ fn parse_sym(s: &str) -> IResult<&str, Symbol> {
     let mut p = map(
         combinator::verify(
             map(
-                multi::many1(character::satisfy(is_sym_char)),
-                String::from_iter,
+                sequence::tuple((
+                    character::satisfy(is_sym_char_first),
+                    map(
+                        multi::many0(character::satisfy(is_sym_char_after)),
+                        String::from_iter,
+                    ),
+                )),
+                |(first, second): (char, String)| format!("{}{}", first, second),
             ),
             is_not_reserved,
         ),
@@ -98,15 +107,15 @@ fn parse_if_else_expr(s: &str) -> IResult<&str, Expr> {
         "IfElse",
         sequence::tuple((
             tag("if"),
-            spaceLf1,
+            space_lf1,
             parse_expr,
-            spaceLf1,
+            space_lf1,
             tag("then"),
-            spaceLf1,
+            space_lf1,
             parse_expr,
-            spaceLf1,
+            space_lf1,
             tag("else"),
-            spaceLf1,
+            space_lf1,
             parse_expr,
         )),
     );
@@ -124,12 +133,12 @@ fn parse_func_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context(
         "Func",
         sequence::tuple((
-            tag("fn"),
-            spaceLf1,
+            tag("\\"),
+            space_lf0,
             parse_sym,
-            spaceLf0,
+            space_lf0,
             tag("->"),
-            spaceLf0,
+            space_lf0,
             parse_expr,
         )),
     );
@@ -147,15 +156,15 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
         "LetExpr",
         sequence::tuple((
             tag("let"),
-            spaceLf1,
+            space_lf1,
             parse_sym,
-            spaceLf0,
+            space_lf0,
             tag("="),
-            spaceLf0,
+            space_lf0,
             parse_expr,
-            spaceLf1,
+            space_lf1,
             tag("in"),
-            spaceLf1,
+            space_lf1,
             parse_expr,
         )),
     );
@@ -170,12 +179,35 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
     ))
 }
 
+fn parse_tuple_expr(s: &str) -> IResult<&str, Expr> {
+    let sep_p = sequence::tuple((space_lf0, tag(","), space_lf0));
+    let mut p = context(
+        "Tuple",
+        map(
+            sequence::tuple((
+                tag("("),
+                space_lf0,
+                multi::separated_list0(sep_p, parse_expr),
+                space_lf0,
+                tag(")"),
+            )),
+            |(_, _, exprs, _, _)| {
+                if exprs.len() == 1 {
+                    exprs.get(0).unwrap().clone()
+                } else {
+                    Expr::Tuple(Tuple { exprs })
+                }
+            },
+        ),
+    );
+    p(s)
+}
+
 fn parse_expr(s: &str) -> IResult<&str, Expr> {
-    println!("Expr: {}", s);
     let mut p = context(
         "Expr",
         branch::alt((
-            sequence::preceded(tag("("), sequence::terminated(parse_expr, tag(")"))),
+            parse_tuple_expr,
             parse_literal_expr,
             parse_func_expr,
             parse_let_expr,
@@ -188,7 +220,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
 
     // handle function applications
     let (s, first_expr) = p(s)?;
-    let mut p = sequence::preceded(spaceLf1, p);
+    let mut p = sequence::preceded(space_lf1, p);
     let mut exprs = vec![first_expr];
     let mut s = s;
     loop {
@@ -215,7 +247,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
 
 pub fn parse(s: &str) -> Result<Expr, String> {
     let mut p = map(
-        sequence::tuple((spaceLf0, parse_expr, spaceLf0)),
+        sequence::tuple((space_lf0, parse_expr, space_lf0)),
         |(_, e, _)| e,
     );
     match p(s) {

@@ -129,6 +129,26 @@ pub fn if_else_expr(expr: Expr, case_true: Expr, case_false: Expr) -> Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tuple {
+    pub exprs: Vec<Expr>,
+}
+impl fmt::Display for Tuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        for e in self.exprs.iter().take(1) {
+            write!(f, "{}", e)?;
+        }
+        for e in self.exprs.iter().skip(1) {
+            write!(f, ", {}", e)?;
+        }
+        write!(f, ")")
+    }
+}
+pub fn tuple_expr(exprs: Vec<Expr>) -> Expr {
+    Expr::Tuple(Tuple { exprs })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Symbol(Symbol),
     Literal(Literal),
@@ -136,6 +156,7 @@ pub enum Expr {
     Let(Let),
     Appl(Appl),
     IfElse(IfElse),
+    Tuple(Tuple),
 }
 
 impl fmt::Display for Expr {
@@ -157,6 +178,9 @@ impl fmt::Display for Expr {
                 write!(f, "{}", x)
             }
             Self::IfElse(x) => {
+                write!(f, "{}", x)
+            }
+            Self::Tuple(x) => {
                 write!(f, "{}", x)
             }
         }
