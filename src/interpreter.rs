@@ -3,8 +3,93 @@ use crate::prelude::Symbol;
 use ast::{Appl, Expr, Literal};
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
+use std::collections::*;
 use std::fmt;
 use std::rc::Rc;
+
+#[derive(Debug, Clone)]
+pub struct ExecutionContext {
+    bindings: HashMap<Symbol, Value>,
+    recursives: Vec<ast::Let>,
+    name: Symbol,
+    height: u32,
+    previous: Option<Rc<ExecutionContext>>,
+}
+
+impl fmt::Display for ExecutionContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let stack = self.stack();
+        for &name in stack.iter() {
+            writeln!(f, "  {}", name)?;
+        }
+        Ok(())
+    }
+}
+impl ExecutionContext {
+    pub fn new_empty() -> Self {
+        Self {
+            bindings: HashMap::new(),
+            recursives: Vec::new(),
+            name: Symbol("Empty_context".to_owned()),
+            height: 0,
+            previous: None,
+        }
+    }
+    pub fn new_global_ctx(bindings: HashMap<Symbol, Value>) -> Self {
+        Self {
+            bindings,
+            recursives: Vec::new(),
+            name: Symbol("Global_context".to_owned()),
+            height: 0,
+            previous: None,
+        }
+    }
+
+    pub fn stack(&self) -> Vec<&Symbol> {
+        let mut ctx = self;
+        let mut stack = vec![&self.name];
+        while let Some(prev) = &ctx.previous {
+            stack.push(&prev.name);
+            ctx = &*prev;
+        }
+        stack
+    }
+
+    pub fn find<'a>(&'a self, name: &Symbol) -> Option<&'a Value> {
+        let mut ctx: &'a ExecutionContext = self;
+        loop {
+            if let Some(v) = ctx.bindings.get(name) {
+                return Some(v);
+            }
+            if let Some(prev) = &ctx.previous {
+                ctx = prev;
+            } else {
+                return None;
+            }
+        }
+    }
+
+    pub fn bind(&mut self, sy: &Symbol, val: Value) {
+        self.bindings.insert(sy.clone(), val);
+    }
+
+    pub fn enter_ctx(self, name: &Symbol) -> Self {
+        return ExecutionContext {
+            bindings: HashMap::new(),
+            recursives: Vec::new(),
+            name: name.clone(),
+            height: self.height + 1,
+            previous: Some(Rc::new(self)),
+        };
+    }
+
+    pub fn exit_ctx(&mut self) {
+        match &self.previous {
+            None => panic!("global context can't be exited"),
+            Some(prev) => *self = (**prev).clone(),
+        };
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -12,7 +97,7 @@ pub enum Value {
     Tuple(Vec<Value>),
     Function {
         func: ast::Function,
-        bindings: HashTrieMap<Symbol, Value>,
+        context: ExecutionContext,
     },
     Builtin(Symbol),
 }
@@ -33,7 +118,7 @@ impl fmt::Display for Value {
                 }
                 write!(f, ")")
             }
-            Self::Function { func, bindings: _ } => {
+            Self::Function { func, context: _ } => {
                 write!(f, "{}", func)
             }
             Self::Builtin(sym) => {
@@ -43,98 +128,31 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct StackFrame {
-    bindings: HashTrieMap<Symbol, Value>,
-    previous: Box<Stack>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Stack {
-    Empty,
-    Frame(StackFrame),
-}
-
-impl Stack {
-    pub fn new() -> Self {
-        Self::Empty
-    }
-
-    pub fn enter_frame(&mut self) {
-        *self = match self {
-            Self::Empty => Self::Frame(StackFrame {
-                bindings: HashTrieMap::new(),
-                previous: Box::new(Stack::Empty),
-            }),
-            Self::Frame(x) => Self::Frame(StackFrame {
-                bindings: x.bindings.clone(),
-                previous: Box::new(self.clone()),
-            }),
-        };
-    }
-    pub fn enter_frame_with_bindings(&mut self, bindings: HashTrieMap<Symbol, Value>) {
-        // probably not the most efficient way of enabling recursion
-        let mut next_bindings = match self {
-            Self::Empty => HashTrieMap::new(),
-            Self::Frame(x) => x.bindings.clone(),
-        };
-        for (bind, val) in &bindings {
-            next_bindings.insert_mut(bind.clone(), val.clone());
-        }
-        *self = Self::Frame(StackFrame {
-            bindings: next_bindings,
-            previous: Box::new(self.clone()),
-        });
-    }
-
-    pub fn bind(&mut self, bind: Symbol, value: Value) {
-        *self = match self {
-            Self::Empty => panic!("no frame"),
-            Self::Frame(x) => Self::Frame(StackFrame {
-                bindings: x.bindings.insert(bind, value),
-                previous: x.previous.clone(),
-            }),
-        };
-    }
-
-    pub fn exit_frame(&mut self) {
-        *self = match self {
-            Self::Empty => panic!("no frame to exit"),
-            Self::Frame(x) => *x.previous.clone(),
-        };
-    }
-
-    pub fn get(&self, bind: &Symbol) -> Option<&Value> {
-        match self {
-            Self::Empty => None,
-            Self::Frame(x) => x.bindings.get(bind),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Interpreter {
-    stack: Stack,
+    execution_contexts: Vec<ExecutionContext>,
 }
 
 impl Interpreter {
-    pub fn new() -> Self {
+    pub fn new(global_context: ExecutionContext) -> Self {
         Self {
-            stack: Stack::new(),
+            execution_contexts: vec![global_context],
         }
     }
 
-    fn get(&self, sym: &Symbol) -> Option<&Value> {
-        match self.stack.get(sym) {
-            Some(x) => Some(x),
-            None => None,
-        }
-    }
-
-    fn bindings(&self) -> HashTrieMap<Symbol, Value> {
-        match &self.stack {
-            Stack::Empty => HashTrieMap::new(),
-            Stack::Frame(x) => x.bindings.clone(),
+    fn get(&mut self, sym: &Symbol) -> Option<Value> {
+        match self.current_ctx().find(sym) {
+            Some(x) => Some(x.clone()),
+            None => match self
+                .current_ctx()
+                .recursives
+                .iter()
+                .find(|x| &x.bind == sym)
+                .cloned()
+            {
+                None => None,
+                Some(x) => Some(self.eval(&*x.bind_expr)),
+            },
         }
     }
 
@@ -202,14 +220,24 @@ impl Interpreter {
         }
     }
 
-    fn enable_recursion(bind: &Symbol, val: Value) -> Value {
-        match val.clone() {
-            Value::Function { func, bindings } => Value::Function {
-                func,
-                bindings: bindings.insert(bind.clone(), val.clone()),
-            },
-            x => x,
-        }
+    pub fn current_ctx_enter(&mut self, sy: &Symbol) {
+        let ctx = self
+            .execution_contexts
+            .pop()
+            .expect("global context should exist");
+        self.execution_contexts.push(ctx.enter_ctx(sy));
+    }
+
+    pub fn current_ctx(&self) -> &ExecutionContext {
+        self.execution_contexts
+            .last()
+            .expect("global context should exist")
+    }
+
+    pub fn current_ctx_mut(&mut self) -> &mut ExecutionContext {
+        self.execution_contexts
+            .last_mut()
+            .expect("global context should exist")
     }
 
     pub fn eval(&mut self, expr: &Expr) -> Value {
@@ -220,7 +248,11 @@ impl Interpreter {
                     Value::Builtin(x.clone())
                 } else {
                     self.get(x)
-                        .expect(&format!("symbol used before it was declared: \"{}\"", x))
+                        .expect(&format!(
+                            "symbol used before it was declared: \"{}\"\n{}",
+                            x,
+                            self.current_ctx()
+                        ))
                         .clone()
                 }
             }
@@ -231,26 +263,32 @@ impl Interpreter {
             },
             Expr::Function(x) => Value::Function {
                 func: x.clone(),
-                bindings: self.bindings(),
+                context: self.current_ctx().clone(),
             },
             Expr::Let(x) => {
-                self.stack.enter_frame();
-                let bind_expr = self.eval(&*x.bind_expr);
-                self.stack.bind(x.bind.clone(), bind_expr);
-                let value = self.eval(&*x.next_expr);
-                self.stack.exit_frame();
-                value
+                self.current_ctx_enter(&x.bind);
+                if x.recursive {
+                    self.current_ctx_mut().recursives.push(x.clone());
+                }
+                let bind_value = self.eval(&*x.bind_expr);
+                self.current_ctx_mut().bind(&x.bind, bind_value);
+                let next_value = self.eval(&*x.next_expr);
+                self.current_ctx_mut().exit_ctx();
+                if x.recursive {
+                    self.current_ctx_mut().recursives.pop();
+                }
+                next_value
             }
             Expr::Appl(Appl { func, arg }) => {
                 let func_expr = self.eval(func);
                 let arg_expr = self.eval(arg);
-                match &func_expr {
-                    Value::Builtin(sy) => Self::eval_builtin(sy, &arg_expr),
-                    Value::Function { func, bindings } => {
-                        self.stack.enter_frame_with_bindings(bindings.clone());
-                        self.stack.bind(func.bind.clone(), arg_expr);
+                match func_expr {
+                    Value::Builtin(sy) => Self::eval_builtin(&sy, &arg_expr),
+                    Value::Function { func, mut context } => {
+                        context.bind(&func.bind, arg_expr);
+                        self.execution_contexts.push(context);
                         let e = self.eval(&func.expr);
-                        self.stack.exit_frame();
+                        self.execution_contexts.pop();
                         e
                     }
                     _ => panic!("expected function, found: {}", func),

@@ -3,10 +3,10 @@ use nom::branch;
 use nom::bytes::complete::*;
 use nom::character::complete as character;
 use nom::combinator;
-use nom::combinator::{map, map_res, recognize};
+use nom::combinator::{map, map_res, recognize, success, verify};
 use nom::error::context;
 use nom::multi;
-use nom::sequence;
+use nom::sequence as seq;
 use nom::IResult;
 
 use crate::ast::{Appl, Expr, Function, IfElse, Let, Literal, Tuple};
@@ -68,9 +68,9 @@ fn is_sym_char_after(c: char) -> bool {
 fn parse_sym(s: &str) -> IResult<&str, Symbol> {
     use std::iter::FromIterator;
     let mut p = map(
-        combinator::verify(
+        verify(
             map(
-                sequence::tuple((
+                seq::tuple((
                     character::satisfy(is_sym_char_first),
                     map(
                         multi::many0(character::satisfy(is_sym_char_after)),
@@ -93,7 +93,7 @@ fn parse_line_comment(s: &str) -> IResult<&str, &str> {
     // todo: do this properly
     let mut p = context(
         "LineComment",
-        recognize(sequence::tuple((
+        recognize(seq::tuple((
             tag("--"),
             multi::many0(branch::alt((
                 space_lf1,
@@ -107,7 +107,7 @@ fn parse_line_comment(s: &str) -> IResult<&str, &str> {
 }
 fn parse_multiline_comment(s: &str) -> IResult<&str, &str> {
     // todo: do this properly
-    let mut p = recognize(sequence::tuple((
+    let mut p = recognize(seq::tuple((
         tag("{-"),
         multi::many0(branch::alt((
             space_lf1,
@@ -121,7 +121,7 @@ fn parse_multiline_comment(s: &str) -> IResult<&str, &str> {
 fn parse_if_else_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context(
         "IfElse",
-        sequence::tuple((
+        seq::tuple((
             tag("if"),
             space_lf1,
             parse_expr,
@@ -148,7 +148,7 @@ fn parse_if_else_expr(s: &str) -> IResult<&str, Expr> {
 fn parse_func_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context(
         "Func",
-        sequence::tuple((
+        seq::tuple((
             tag("\\"),
             space_lf0,
             parse_sym,
@@ -170,24 +170,21 @@ fn parse_func_expr(s: &str) -> IResult<&str, Expr> {
 fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context(
         "LetExpr",
-        sequence::tuple((
-            tag("let"),
-            space_lf1,
-            parse_sym,
-            space_lf0,
-            tag("="),
-            space_lf0,
-            parse_expr,
-            space_lf1,
-            tag("in"),
-            space_lf1,
+        seq::tuple((
+            seq::terminated(
+                branch::alt((map(tag("letrec"), |_| true), map(tag("let"), |_| false))),
+                space_lf1,
+            ),
+            seq::terminated(parse_sym, seq::tuple((space_lf0, tag("="), space_lf0))),
+            seq::terminated(parse_expr, seq::tuple((space_lf1, tag("in"), space_lf1))),
             parse_expr,
         )),
     );
-    let (s, (_, _, bind, _, _, _, bind_expr, _, _, _, next_expr)) = p(s)?;
+    let (s, (recursive, bind, bind_expr, next_expr)) = p(s)?;
     Ok((
         s,
         Expr::Let(Let {
+            recursive,
             bind,
             bind_expr: Box::new(bind_expr),
             next_expr: Box::new(next_expr),
@@ -196,11 +193,11 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_tuple_expr(s: &str) -> IResult<&str, Expr> {
-    let sep_p = sequence::tuple((space_lf0, tag(","), space_lf0));
+    let sep_p = seq::tuple((space_lf0, tag(","), space_lf0));
     let mut p = context(
         "Tuple",
         map(
-            sequence::tuple((
+            seq::tuple((
                 tag("("),
                 space_lf0,
                 multi::separated_list0(sep_p, parse_expr),
@@ -236,7 +233,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
 
     // handle function applications
     let (s, first_expr) = p(s)?;
-    let mut p = sequence::preceded(space_lf1, p);
+    let mut p = seq::preceded(space_lf1, p);
     let mut exprs = vec![first_expr];
     let mut s = s;
     loop {
@@ -263,7 +260,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
 
 pub fn parse(s: &str) -> Result<Expr, String> {
     let mut p = map(
-        sequence::tuple((space_lf0, parse_expr, space_lf0)),
+        seq::tuple((space_lf0, parse_expr, space_lf0)),
         |(_, e, _)| e,
     );
     match p(s) {

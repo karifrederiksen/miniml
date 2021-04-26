@@ -64,6 +64,7 @@ pub fn func_expr(bind: Symbol, expr: Expr) -> Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Let {
+    pub recursive: bool,
     pub bind: Symbol,
     pub bind_expr: Box<Expr>,
     pub next_expr: Box<Expr>,
@@ -73,10 +74,12 @@ impl fmt::Display for Let {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "let {} = {} in\n{}",
-            self.bind, self.bind_expr, self.next_expr
-        )?;
-        Ok(())
+            "{} {} = {} in\n{}",
+            (if self.recursive { "letrec" } else { "let" }),
+            self.bind,
+            self.bind_expr,
+            self.next_expr
+        )
     }
 }
 
@@ -262,6 +265,7 @@ impl fmt::Display for Type {
 pub fn desugar_let(expr: &mut Expr) {
     match expr {
         Expr::Let(Let {
+            recursive: _,
             bind: _,
             bind_expr: _,
             next_expr: _,
