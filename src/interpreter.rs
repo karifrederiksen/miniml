@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::prelude::Symbol;
-use ast::{Appl, Expr, Literal};
+use ast::{Appl, Expr, Literal, Pattern};
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
 use std::collections::*;
@@ -11,7 +11,7 @@ use std::rc::Rc;
 pub struct ExecutionContext {
     bindings: HashMap<Symbol, Value>,
     recursives: Vec<ast::Let>,
-    name: Symbol,
+    name: Pattern,
     height: u32,
     previous: Option<Rc<ExecutionContext>>,
 }
@@ -30,7 +30,7 @@ impl ExecutionContext {
         Self {
             bindings: HashMap::new(),
             recursives: Vec::new(),
-            name: Symbol("Empty_context".to_owned()),
+            name: Pattern::Symbol(Symbol("Empty_context".to_owned())),
             height: 0,
             previous: None,
         }
@@ -39,13 +39,13 @@ impl ExecutionContext {
         Self {
             bindings,
             recursives: Vec::new(),
-            name: Symbol("Global_context".to_owned()),
+            name: Pattern::Symbol(Symbol("Global_context".to_owned())),
             height: 0,
             previous: None,
         }
     }
 
-    pub fn stack(&self) -> Vec<&Symbol> {
+    pub fn stack(&self) -> Vec<&Pattern> {
         let mut ctx = self;
         let mut stack = vec![&self.name];
         while let Some(prev) = &ctx.previous {
@@ -69,11 +69,21 @@ impl ExecutionContext {
         }
     }
 
-    pub fn bind(&mut self, sy: &Symbol, val: Value) {
-        self.bindings.insert(sy.clone(), val);
+    pub fn bind(&mut self, pat: &Pattern, val: Value) {
+        match (pat, val) {
+            (Pattern::Symbol(s), val) => {
+                self.bindings.insert(s.clone(), val);
+            }
+            (Pattern::Tuple(tp), Value::Tuple(tv)) => {
+                for i in 0..tp.patterns.len() {
+                    self.bind(tp.patterns.get(i).unwrap(), tv.get(i).unwrap().clone());
+                }
+            }
+            (pat, val) => panic!("mismatch between pattern {} and value {}", pat, val),
+        };
     }
 
-    pub fn enter_ctx(self, name: &Symbol) -> Self {
+    pub fn enter_ctx(self, name: &Pattern) -> Self {
         return ExecutionContext {
             bindings: HashMap::new(),
             recursives: Vec::new(),
@@ -147,7 +157,7 @@ impl Interpreter {
                 .current_ctx()
                 .recursives
                 .iter()
-                .find(|x| &x.bind == sym)
+                .find(|x| x.bind.contains(sym))
                 .cloned()
             {
                 None => None,
@@ -220,7 +230,7 @@ impl Interpreter {
         }
     }
 
-    pub fn current_ctx_enter(&mut self, sy: &Symbol) {
+    pub fn current_ctx_enter(&mut self, sy: &Pattern) {
         let ctx = self
             .execution_contexts
             .pop()

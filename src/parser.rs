@@ -9,7 +9,7 @@ use nom::multi;
 use nom::sequence as seq;
 use nom::IResult;
 
-use crate::ast::{Appl, Expr, Function, IfElse, Let, Literal, Tuple};
+use crate::ast::{Appl, Expr, Function, IfElse, Let, Literal, Pattern, Tuple, TuplePattern};
 use crate::prelude::{sym, Symbol};
 
 fn is_space_or_lf(c: char) -> bool {
@@ -89,6 +89,25 @@ fn parse_sym_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context("Symbol", map(parse_sym, Expr::Symbol));
     p(s)
 }
+fn parse_sym_pattern(s: &str) -> IResult<&str, Pattern> {
+    let mut p = map(parse_sym, Pattern::Symbol);
+    p(s)
+}
+fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
+    let p = map(
+        multi::separated_list0(
+            tag(","),
+            seq::preceded(space_lf0, seq::terminated(parse_pattern, space_lf0)),
+        ),
+        |patterns| Pattern::Tuple(TuplePattern { patterns }),
+    );
+    let mut p = seq::preceded(tag("("), seq::terminated(p, tag(")")));
+    p(s)
+}
+fn parse_pattern(s: &str) -> IResult<&str, Pattern> {
+    let mut p = branch::alt((parse_sym_pattern, parse_tuple_pattern));
+    p(s)
+}
 fn parse_line_comment(s: &str) -> IResult<&str, &str> {
     // todo: do this properly
     let mut p = context(
@@ -151,7 +170,7 @@ fn parse_func_expr(s: &str) -> IResult<&str, Expr> {
         seq::tuple((
             tag("\\"),
             space_lf0,
-            parse_sym,
+            parse_pattern,
             space_lf0,
             tag("->"),
             space_lf0,
@@ -175,10 +194,10 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
                 branch::alt((map(tag("letrec"), |_| true), map(tag("let"), |_| false))),
                 space_lf1,
             ),
-            parse_sym,
+            parse_pattern,
             seq::terminated(
                 branch::alt((
-                    map(seq::preceded(space_lf1, parse_sym), Some),
+                    map(seq::preceded(space_lf1, parse_pattern), Some),
                     success(None),
                 )),
                 seq::tuple((space_lf0, tag("="), space_lf0)),

@@ -13,13 +13,16 @@ use std::collections::HashMap;
 fn factorial_expr(n: i32) -> ast::Expr {
     let src: String = format!(
         "
+let apply (f, x) =
+    f x
+in
 letrec fact n =
     if eq n 0 then
         1
     else
         mul n (fact (sub n 1))
 in
-fact {}
+apply (fact, {})
     ",
         n
     );

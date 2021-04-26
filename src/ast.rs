@@ -41,8 +41,47 @@ pub fn sym_expr<S: Into<String>>(x: S) -> Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TuplePattern {
+    pub patterns: Vec<Pattern>,
+}
+impl fmt::Display for TuplePattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        for e in self.patterns.iter().take(1) {
+            write!(f, "{}", e)?;
+        }
+        for e in self.patterns.iter().skip(1) {
+            write!(f, ", {}", e)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pattern {
+    Symbol(Symbol),
+    Tuple(TuplePattern),
+}
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pattern::Symbol(x) => write!(f, "{}", x),
+            Pattern::Tuple(x) => write!(f, "{}", x),
+        }
+    }
+}
+impl Pattern {
+    pub fn contains(&self, s: &Symbol) -> bool {
+        match self {
+            Self::Symbol(x) => x == s,
+            Self::Tuple(ts) => ts.patterns.iter().any(|x| x.contains(s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
-    pub bind: Symbol,
+    pub bind: Pattern,
     pub expr: Box<Expr>,
 }
 
@@ -51,21 +90,21 @@ impl fmt::Display for Function {
         write!(f, "(\\{} -> {})", self.bind, self.expr)
     }
 }
-pub fn func(bind: Symbol, expr: Expr) -> Function {
+pub fn func(bind: Pattern, expr: Expr) -> Function {
     Function {
         bind,
         expr: Box::new(expr),
     }
 }
 
-pub fn func_expr(bind: Symbol, expr: Expr) -> Expr {
+pub fn func_expr(bind: Pattern, expr: Expr) -> Expr {
     Expr::Function(func(bind, expr))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Let {
     pub recursive: bool,
-    pub bind: Symbol,
+    pub bind: Pattern,
     pub bind_expr: Box<Expr>,
     pub next_expr: Box<Expr>,
 }
@@ -188,10 +227,6 @@ impl fmt::Display for Expr {
             }
         }
     }
-}
-
-pub fn pretty_print_expr(expr: &Expr) -> String {
-    format!("{}", expr)
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -322,7 +357,7 @@ impl Printer {
                     self.print(x);
                 }
                 for x in x.exprs.iter().skip(1) {
-                    self.space();
+                    self.print_str(", ");
                     self.print(x);
                 }
                 self.print_str(")");
@@ -334,7 +369,8 @@ impl Printer {
                     self.print_str("let");
                 }
                 self.space();
-                self.print_str(&x.bind.0);
+
+                self.print_str(&format!("{}", x.bind));
                 self.space();
                 self.print_str("=");
                 self.indent_incr();
@@ -346,7 +382,7 @@ impl Printer {
             }
             Expr::Function(x) => {
                 self.print_str("(\\");
-                self.print_str(&x.bind.0);
+                self.print_str(&format!("{}", x.bind));
                 self.space();
                 self.print_str("->");
                 self.indent_incr();
