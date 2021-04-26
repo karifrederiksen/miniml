@@ -13,12 +13,11 @@ use std::collections::HashMap;
 fn factorial_expr(n: i32) -> ast::Expr {
     let src: String = format!(
         "
-letrec fact =
-    \\n ->
-        if eq n 0 then
-            1
-        else
-            mul n (fact (sub n 1))
+letrec fact n =
+    if eq n 0 then
+        1
+    else
+        mul n (fact (sub n 1))
 in
 fact {}
     ",
@@ -29,8 +28,8 @@ fact {}
 }
 
 fn main() {
-    let ast: ast::Expr = factorial_expr(4);
-    println!("{}\n\n", ast);
+    let ast: ast::Expr = factorial_expr(6);
+    println!("{}\n\n", ast::print_expr(&ast));
     let global_ctx = {
         use interpreter::Value;
         let mut bindings: HashMap<Symbol, interpreter::Value> = HashMap::new();

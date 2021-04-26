@@ -74,7 +74,7 @@ impl fmt::Display for Let {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} = {} in\n{}",
+            "{} {} = {} in {}",
             (if self.recursive { "letrec" } else { "let" }),
             self.bind,
             self.bind_expr,
@@ -118,7 +118,7 @@ impl fmt::Display for IfElse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(if {} then {} else {})",
+            "if {} then {} else {}",
             self.expr, self.case_true, self.case_false
         )
     }
@@ -262,17 +262,129 @@ impl fmt::Display for Type {
     }
 }
 
-pub fn desugar_let(expr: &mut Expr) {
-    match expr {
-        Expr::Let(Let {
-            recursive: _,
-            bind: _,
-            bind_expr: _,
-            next_expr: _,
-        }) => {
-            //
-            todo!()
+struct Printer {
+    space_per_indent: usize,
+    ind_level: usize,
+    current_line_len: usize,
+    text: String,
+}
+
+enum PrintToken {
+    Space,
+    IndentIncr,
+    IndentDecl,
+    Newline,
+    Text(String),
+}
+
+impl Printer {
+    fn new() -> Self {
+        Self {
+            space_per_indent: 4,
+            ind_level: 0,
+            current_line_len: 0,
+            text: String::new(),
         }
-        _ => {}
     }
+    fn print(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Literal(x) => {
+                let s = format!("{}", x);
+                self.print_str(&s);
+            }
+            Expr::Symbol(x) => {
+                self.print_str(&x.0);
+            }
+            Expr::Appl(x) => {
+                self.print_str("(");
+                self.print(&*x.func);
+                self.space();
+                self.print(&*x.arg);
+                self.print_str(")");
+            }
+            Expr::IfElse(x) => {
+                self.print_str("if");
+                self.space();
+                self.print(&*x.expr);
+                self.space();
+                self.print_str("then");
+                self.indent_incr();
+                self.print(&*x.case_true);
+                self.indent_decr();
+                self.print_str("else");
+                self.indent_incr();
+                self.print(&*x.case_false);
+                self.indent_decr();
+            }
+            Expr::Tuple(x) => {
+                self.print_str("(");
+                for x in x.exprs.iter().take(1) {
+                    self.print(x);
+                }
+                for x in x.exprs.iter().skip(1) {
+                    self.space();
+                    self.print(x);
+                }
+                self.print_str(")");
+            }
+            Expr::Let(x) => {
+                if x.recursive {
+                    self.print_str("letrec");
+                } else {
+                    self.print_str("let");
+                }
+                self.space();
+                self.print_str(&x.bind.0);
+                self.space();
+                self.print_str("=");
+                self.indent_incr();
+                self.print(&x.bind_expr);
+                self.indent_decr();
+                self.print_str("in");
+                self.newline();
+                self.print(&x.next_expr);
+            }
+            Expr::Function(x) => {
+                self.print_str("(\\");
+                self.print_str(&x.bind.0);
+                self.space();
+                self.print_str("->");
+                self.indent_incr();
+                self.print(&x.expr);
+                self.indent_decr();
+                self.print_str(")");
+            }
+        }
+    }
+    fn indent_incr(&mut self) {
+        self.ind_level += 1;
+        self.newline();
+    }
+    fn indent_decr(&mut self) {
+        self.ind_level -= 1;
+        self.newline();
+    }
+    fn newline(&mut self) {
+        self.current_line_len = 0;
+    }
+    fn space(&mut self) {
+        self.text.push(' ');
+        self.current_line_len += 1;
+    }
+    fn print_str(&mut self, s: &str) {
+        if self.current_line_len == 0 && self.text.len() != 0 {
+            self.text.push('\n');
+            let ind = " ".repeat(self.ind_level * self.space_per_indent);
+            self.current_line_len += ind.len();
+            self.text.push_str(&ind);
+        }
+        self.text.push_str(&s);
+        self.current_line_len += s.len();
+    }
+}
+
+pub fn print_expr(e: &Expr) -> String {
+    let mut printer = Printer::new();
+    printer.print(e);
+    printer.text
 }

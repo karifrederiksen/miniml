@@ -52,7 +52,7 @@ fn parse_literal_expr(s: &str) -> IResult<&str, Expr> {
     p(s)
 }
 
-const RESERVED_SYMBOLS: [&'static str; 6] = ["let", "in", "if", "then", "else", "fn"];
+const RESERVED_SYMBOLS: [&'static str; 7] = ["let", "letrec", "in", "if", "then", "else", "fn"];
 
 fn is_not_reserved(s: &str) -> bool {
     !RESERVED_SYMBOLS.contains(&s)
@@ -175,18 +175,31 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
                 branch::alt((map(tag("letrec"), |_| true), map(tag("let"), |_| false))),
                 space_lf1,
             ),
-            seq::terminated(parse_sym, seq::tuple((space_lf0, tag("="), space_lf0))),
+            parse_sym,
+            seq::terminated(
+                branch::alt((
+                    map(seq::preceded(space_lf1, parse_sym), Some),
+                    success(None),
+                )),
+                seq::tuple((space_lf0, tag("="), space_lf0)),
+            ),
             seq::terminated(parse_expr, seq::tuple((space_lf1, tag("in"), space_lf1))),
             parse_expr,
         )),
     );
-    let (s, (recursive, bind, bind_expr, next_expr)) = p(s)?;
+    let (s, (recursive, bind, par, bind_expr, next_expr)) = p(s)?;
     Ok((
         s,
         Expr::Let(Let {
             recursive,
             bind,
-            bind_expr: Box::new(bind_expr),
+            bind_expr: Box::new(match par {
+                None => bind_expr,
+                Some(par) => Expr::Function(Function {
+                    bind: par,
+                    expr: Box::new(bind_expr),
+                }),
+            }),
             next_expr: Box::new(next_expr),
         }),
     ))
