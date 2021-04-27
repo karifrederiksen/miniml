@@ -99,6 +99,7 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
     let mut p = seq::preceded(tag("("), seq::terminated(p, tag(")")));
     p(s)
 }
+
 fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
     let mut p = map(parse_custom_type, |t| {
         Pattern::Variant(VariantPattern {
@@ -288,6 +289,10 @@ fn parse_match_expr(s: &str) -> IResult<&str, Expr> {
     ))
 }
 
+fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
+    let mut p = map(parse_custom_type, |x| Expr::Symbol(Symbol(x.0)));
+    p(s)
+}
 fn parse_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context(
         "Expr",
@@ -299,6 +304,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
             parse_if_else_expr,
             parse_match_expr,
             parse_sym_expr,
+            parse_type_constr_expr,
         )),
     );
 

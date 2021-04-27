@@ -422,7 +422,12 @@ impl Interpreter {
                 }
             }
             Statement::Type(t) => {
-                // no op?
+                for v in &t.variants {
+                    self.current_ctx_mut().bind(
+                        &Pattern::Symbol(Symbol(v.constr.0.clone())),
+                        Value::Variant((v.constr.clone(), None)),
+                    )?;
+                }
             }
         }
         Ok(())

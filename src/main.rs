@@ -24,7 +24,7 @@ rec fact n =
     else
         mul n (fact (sub n 1))
 
-let main = (fact 6, not False)
+let main = (fact 6, f Fa)
     ";
         parser::parse_module(src).unwrap()
     };
