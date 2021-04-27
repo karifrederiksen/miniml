@@ -23,23 +23,6 @@ impl fmt::Display for Literal {
     }
 }
 
-pub fn bool_(x: bool) -> Literal {
-    Literal::Bool(x)
-}
-pub fn bool_expr(x: bool) -> Expr {
-    Expr::Literal(bool_(x))
-}
-pub fn integer(x: i128) -> Literal {
-    Literal::Int(x)
-}
-pub fn integer_expr(x: i128) -> Expr {
-    Expr::Literal(integer(x))
-}
-
-pub fn sym_expr<S: Into<String>>(x: S) -> Expr {
-    Expr::Symbol(sym(x))
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TuplePattern {
     pub patterns: Vec<Pattern>,
@@ -56,6 +39,15 @@ impl fmt::Display for TuplePattern {
         write!(f, ")")
     }
 }
+
+pub struct VariantConstr(String);
+
+pub struct Variant {
+    pub constr: VariantConstr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantDefinition {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
@@ -90,16 +82,6 @@ impl fmt::Display for Function {
         write!(f, "(\\{} -> {})", self.bind, self.expr)
     }
 }
-pub fn func(bind: Pattern, expr: Expr) -> Function {
-    Function {
-        bind,
-        expr: Box::new(expr),
-    }
-}
-
-pub fn func_expr(bind: Pattern, expr: Expr) -> Expr {
-    Expr::Function(func(bind, expr))
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Let {
@@ -114,7 +96,7 @@ impl fmt::Display for Let {
         write!(
             f,
             "{} {} = {} in {}",
-            (if self.recursive { "letrec" } else { "let" }),
+            (if self.recursive { "rec" } else { "let" }),
             self.bind,
             self.bind_expr,
             self.next_expr
@@ -135,17 +117,6 @@ impl fmt::Display for Appl {
     }
 }
 
-pub fn appl(f: Expr, a: Expr) -> Appl {
-    Appl {
-        func: Box::new(f),
-        arg: Box::new(a),
-    }
-}
-
-pub fn appl_expr(f: Expr, a: Expr) -> Expr {
-    Expr::Appl(appl(f, a))
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IfElse {
     pub expr: Box<Expr>,
@@ -161,13 +132,6 @@ impl fmt::Display for IfElse {
             self.expr, self.case_true, self.case_false
         )
     }
-}
-pub fn if_else_expr(expr: Expr, case_true: Expr, case_false: Expr) -> Expr {
-    Expr::IfElse(IfElse {
-        expr: Box::new(expr),
-        case_true: Box::new(case_true),
-        case_false: Box::new(case_false),
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,6 +191,22 @@ impl fmt::Display for Expr {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LetStatement {
+    pub recursive: bool,
+    pub bind: Symbol,
+    pub expr: Expr,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Statement {
+    Let(LetStatement),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Module {
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -423,4 +403,23 @@ pub fn print_expr(e: &Expr) -> String {
     let mut printer = Printer::new();
     printer.print(e);
     printer.text
+}
+
+pub fn print_module(p: &Module) -> String {
+    let mut s = String::new();
+    for st in &p.statements {
+        let mut printer = Printer::new();
+        match st {
+            Statement::Let(st) => {
+                printer.print(&st.expr);
+                if st.recursive {
+                    s.push_str("rec");
+                } else {
+                    s.push_str("let");
+                }
+                s.push_str(&format!(" {} = {}\n\n", &st.bind, &printer.text));
+            }
+        }
+    }
+    s
 }

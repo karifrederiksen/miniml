@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::prelude::Symbol;
-use ast::{Appl, Expr, Literal, Pattern};
+use ast::{Appl, Expr, Literal, Module, Pattern};
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
 use std::collections::*;
@@ -10,7 +10,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     bindings: HashMap<Symbol, Value>,
-    recursives: Vec<ast::Let>,
+    recursives: Vec<(Pattern, Expr)>,
     name: Pattern,
     height: u32,
     previous: Option<Rc<ExecutionContext>>,
@@ -157,11 +157,11 @@ impl Interpreter {
                 .current_ctx()
                 .recursives
                 .iter()
-                .find(|x| x.bind.contains(sym))
+                .find(|x| x.0.contains(sym))
                 .cloned()
             {
                 None => None,
-                Some(x) => Some(self.eval(&*x.bind_expr)),
+                Some(x) => Some(self.eval(&x.1)),
             },
         }
     }
@@ -278,7 +278,9 @@ impl Interpreter {
             Expr::Let(x) => {
                 self.current_ctx_enter(&x.bind);
                 if x.recursive {
-                    self.current_ctx_mut().recursives.push(x.clone());
+                    self.current_ctx_mut()
+                        .recursives
+                        .push((x.bind.clone(), *x.bind_expr.clone()));
                 }
                 let bind_value = self.eval(&*x.bind_expr);
                 self.current_ctx_mut().bind(&x.bind, bind_value);
@@ -308,6 +310,30 @@ impl Interpreter {
                 let exprs: Vec<Value> = x.exprs.iter().map(|e| self.eval(e)).collect();
                 Value::Tuple(exprs)
             }
+        }
+    }
+    fn eval_statement(&mut self, st: &ast::Statement) {
+        match st {
+            ast::Statement::Let(st) => {
+                self.current_ctx_enter(&Pattern::Symbol(st.bind.clone()));
+                if st.recursive {
+                    self.current_ctx_mut()
+                        .recursives
+                        .push((Pattern::Symbol(st.bind.clone()), st.expr.clone()));
+                }
+                let bind_value = self.eval(&st.expr);
+                self.current_ctx_mut().exit_ctx();
+                self.current_ctx_mut()
+                    .bind(&Pattern::Symbol(st.bind.clone()), bind_value);
+                if st.recursive {
+                    self.current_ctx_mut().recursives.pop();
+                }
+            }
+        }
+    }
+    pub fn eval_module(&mut self, module: &Module) {
+        for st in &module.statements {
+            self.eval_statement(st);
         }
     }
 }

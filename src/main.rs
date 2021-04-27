@@ -10,29 +10,29 @@ pub mod prelude;
 use crate::prelude::{sym, Symbol};
 use std::collections::HashMap;
 
-fn factorial_expr(n: i32) -> ast::Expr {
+fn factorial_expr(n: i32) -> ast::Module {
     let src: String = format!(
         "
-let apply (f, x) =
-    f x
-in
-letrec fact n =
+
+let apply (f, x) = f x
+
+rec fact n =
     if eq n 0 then
         1
     else
         mul n (fact (sub n 1))
-in
-apply (fact, {})
+
+let main = (fact {}, True)
     ",
         n
     );
     let src: &str = &src;
-    parser::parse(src).unwrap()
+    parser::parse_module(src).unwrap()
 }
 
 fn main() {
-    let ast: ast::Expr = factorial_expr(6);
-    println!("{}\n\n", ast::print_expr(&ast));
+    let module: ast::Module = factorial_expr(6);
+    println!("{}\n\n", ast::print_module(&module));
     let global_ctx = {
         use interpreter::Value;
         let mut bindings: HashMap<Symbol, interpreter::Value> = HashMap::new();
@@ -59,7 +59,15 @@ mul = \\l -> \\r -> builtin_mul (l, r)
         interpreter::ExecutionContext::new_global_ctx(bindings)
     };
     let mut interp = interpreter::Interpreter::new(global_ctx);
-    println!("{}\n\n", interp.eval(&ast));
+    interp.eval_module(&module);
+    match interp.current_ctx().find(&Symbol("main".to_owned())) {
+        Some(main) => {
+            println!("{}\n\n", main);
+        }
+        None => {
+            println!("no main found\n\n");
+        }
+    };
 }
 
 #[cfg(test)]

@@ -9,7 +9,10 @@ use nom::multi;
 use nom::sequence as seq;
 use nom::IResult;
 
-use crate::ast::{Appl, Expr, Function, IfElse, Let, Literal, Pattern, Tuple, TuplePattern};
+use crate::ast::{
+    Appl, Expr, Function, IfElse, Let, LetStatement, Literal, Module, Pattern, Statement, Tuple,
+    TuplePattern,
+};
 use crate::prelude::{sym, Symbol};
 
 fn is_space_or_lf(c: char) -> bool {
@@ -52,7 +55,7 @@ fn parse_literal_expr(s: &str) -> IResult<&str, Expr> {
     p(s)
 }
 
-const RESERVED_SYMBOLS: [&'static str; 7] = ["let", "letrec", "in", "if", "then", "else", "fn"];
+const RESERVED_SYMBOLS: [&'static str; 7] = ["let", "rec", "in", "if", "then", "else", "fn"];
 
 fn is_not_reserved(s: &str) -> bool {
     !RESERVED_SYMBOLS.contains(&s)
@@ -191,7 +194,7 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
         "LetExpr",
         seq::tuple((
             seq::terminated(
-                branch::alt((map(tag("letrec"), |_| true), map(tag("let"), |_| false))),
+                branch::alt((map(tag("rec"), |_| true), map(tag("let"), |_| false))),
                 space_lf1,
             ),
             parse_pattern,
@@ -294,6 +297,51 @@ pub fn parse(s: &str) -> Result<Expr, String> {
     let mut p = map(
         seq::tuple((space_lf0, parse_expr, space_lf0)),
         |(_, e, _)| e,
+    );
+    match p(s) {
+        Ok((_, e)) => Ok(e),
+        Err(e) => Err(format!("{}", e)),
+    }
+}
+
+fn parse_let_statement(s: &str) -> IResult<&str, Statement> {
+    let mut p = context(
+        "LetStatement",
+        seq::tuple((
+            branch::alt((map(tag("rec"), |_| true), map(tag("let"), |_| false))),
+            space_lf1,
+            parse_sym,
+            branch::alt((
+                map(seq::preceded(space_lf1, parse_pattern), Some),
+                success(None),
+            )),
+            seq::tuple((space_lf0, tag("="), space_lf0)),
+            parse_expr,
+        )),
+    );
+    let (s, (recursive, _, sym, par, _, expr)) = p(s)?;
+    let stmt = LetStatement {
+        recursive,
+        bind: sym,
+        expr: match par {
+            None => expr,
+            Some(par) => Expr::Function(Function {
+                bind: par,
+                expr: Box::new(expr),
+            }),
+        },
+    };
+    Ok((s, Statement::Let(stmt)))
+}
+
+pub fn parse_module(s: &str) -> Result<Module, String> {
+    let mut p = map(
+        seq::tuple((
+            space_lf0,
+            multi::separated_list1(space_lf1, parse_let_statement),
+            space_lf0,
+        )),
+        |(_, statements, _)| Module { statements },
     );
     match p(s) {
         Ok((_, e)) => Ok(e),
