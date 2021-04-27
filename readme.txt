@@ -1,5 +1,8 @@
+records = tuples with fields in a total order (perhaps alphabetic by name)
+
 # ideas to explore
 
+* operators
 * open variant types
 * closed variant types
 * let-desugaring

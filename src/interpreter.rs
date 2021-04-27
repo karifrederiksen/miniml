@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::prelude::Symbol;
-use ast::{Appl, Expr, Literal, Module, Pattern};
+use ast::{Appl, BasicType, Expr, Literal, Module, Pattern, TupleType, Type, VariableType};
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
 use std::collections::*;
@@ -138,21 +138,30 @@ impl fmt::Display for Value {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum InterpError {
+    TypeMismatch((Type, Value)),
+    StackOverflow,
+    UndefinedSymbol(Symbol),
+}
+
 #[derive(Debug)]
 pub struct Interpreter {
     execution_contexts: Vec<ExecutionContext>,
+    depth: usize,
 }
 
 impl Interpreter {
     pub fn new(global_context: ExecutionContext) -> Self {
         Self {
             execution_contexts: vec![global_context],
+            depth: 0,
         }
     }
 
-    fn get(&mut self, sym: &Symbol) -> Option<Value> {
+    fn get(&mut self, sym: &Symbol) -> Result<Value, InterpError> {
         match self.current_ctx().find(sym) {
-            Some(x) => Some(x.clone()),
+            Some(x) => Ok(x.clone()),
             None => match self
                 .current_ctx()
                 .recursives
@@ -160,8 +169,8 @@ impl Interpreter {
                 .find(|x| x.0.contains(sym))
                 .cloned()
             {
-                None => None,
-                Some(x) => Some(self.eval(&x.1)),
+                None => Err(InterpError::UndefinedSymbol(sym.clone())),
+                Some(x) => self.eval(&x.1),
             },
         }
     }
@@ -170,53 +179,65 @@ impl Interpreter {
         sy.0.starts_with("builtin_")
     }
 
-    fn eval_builtin_tup2(x: &Value) -> (Value, Value) {
+    fn eval_builtin_tup2(x: &Value) -> Result<(Value, Value), InterpError> {
         match x {
-            Value::Tuple(values) if values.len() == 2 => (
+            Value::Tuple(values) if values.len() == 2 => Ok((
                 values.get(0).unwrap().clone(),
                 values.get(1).unwrap().clone(),
-            ),
-            _ => panic!("a"),
+            )),
+            _ => Err(InterpError::TypeMismatch((
+                Type::Tuple(TupleType(vec![
+                    Type::Var(VariableType(0)),
+                    Type::Var(VariableType(1)),
+                ])),
+                x.clone(),
+            ))),
         }
     }
-    fn eval_builtin_int_int<F, O>(x: &Value, f: F) -> O
+    fn eval_builtin_int_int<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(i128, i128) -> O,
     {
-        match Self::eval_builtin_tup2(x) {
-            (Value::Literal(Literal::Int(l)), Value::Literal(Literal::Int(r))) => f(l, r),
-            (l, r) => panic!(
-                "type mismatch. expected expression of type (Int, Int), found: ({}, {})",
-                l, r
-            ),
+        match Self::eval_builtin_tup2(x)? {
+            (Value::Literal(Literal::Int(l)), Value::Literal(Literal::Int(r))) => Ok(f(l, r)),
+            (l, r) => Err(InterpError::TypeMismatch((
+                Type::Tuple(TupleType(vec![
+                    Type::Basic(BasicType::Int),
+                    Type::Basic(BasicType::Int),
+                ])),
+                Value::Tuple(vec![l, r]),
+            ))),
         }
     }
-    fn eval_builtin_bool_bool<F, O>(x: &Value, f: F) -> O
+    fn eval_builtin_bool_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(bool, bool) -> O,
     {
-        match Self::eval_builtin_tup2(x) {
-            (Value::Literal(Literal::Bool(l)), Value::Literal(Literal::Bool(r))) => f(l, r),
-            (l, r) => panic!(
-                "type mismatch. expected expression of type (Bool, Bool), found: ({}, {})",
-                l, r
-            ),
+        match Self::eval_builtin_tup2(x)? {
+            (Value::Literal(Literal::Bool(l)), Value::Literal(Literal::Bool(r))) => Ok(f(l, r)),
+            (l, r) => Err(InterpError::TypeMismatch((
+                Type::Tuple(TupleType(vec![
+                    Type::Basic(BasicType::Bool),
+                    Type::Basic(BasicType::Bool),
+                ])),
+                Value::Tuple(vec![l, r]),
+            ))),
         }
     }
-    fn eval_builtin_bool<F, O>(x: &Value, f: F) -> O
+    fn eval_builtin_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(bool) -> O,
     {
         match x {
-            Value::Literal(Literal::Bool(x)) => f(*x),
-            _ => panic!(
-                "type mismatch. expected expression of type Bool, found: {}",
-                x
-            ),
+            Value::Literal(Literal::Bool(x)) => Ok(f(*x)),
+            x => Err(InterpError::TypeMismatch((
+                Type::Basic(BasicType::Bool),
+                x.clone(),
+            ))),
         }
     }
 
-    fn eval_builtin(sy: &Symbol, x: &Value) -> Value {
+    fn eval_builtin(sy: &Symbol, x: &Value) -> Result<Value, InterpError> {
         match &sy.0[8..] {
             "eq" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
             "add" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Int(l + r))),
@@ -226,11 +247,14 @@ impl Interpreter {
             "and" => Self::eval_builtin_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l && r))),
             "or" => Self::eval_builtin_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l || r))),
             "not" => Self::eval_builtin_bool(x, |x| Value::Literal(Literal::Bool(!x))),
-            _ => panic!("unknown builtin: {}", sy),
+            _ => Err(InterpError::UndefinedSymbol(sy.clone())),
         }
     }
 
     pub fn current_ctx_enter(&mut self, sy: &Pattern) {
+        if self.execution_contexts.len() > 10_000 {
+            panic!("Stack overflow");
+        }
         let ctx = self
             .execution_contexts
             .pop()
@@ -250,31 +274,29 @@ impl Interpreter {
             .expect("global context should exist")
     }
 
-    pub fn eval(&mut self, expr: &Expr) -> Value {
-        match expr {
-            Expr::Literal(x) => Value::Literal(*x),
+    pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpError> {
+        if self.depth > 1_000 {
+            return Err(InterpError::StackOverflow);
+        }
+        self.depth += 1;
+        let val = match expr {
+            Expr::Literal(x) => Ok(Value::Literal(*x)),
             Expr::Symbol(x) => {
                 if Self::is_builtin(x) {
-                    Value::Builtin(x.clone())
+                    Ok(Value::Builtin(x.clone()))
                 } else {
                     self.get(x)
-                        .expect(&format!(
-                            "symbol used before it was declared: \"{}\"\n{}",
-                            x,
-                            self.current_ctx()
-                        ))
-                        .clone()
                 }
             }
-            Expr::IfElse(x) => match self.eval(&x.expr) {
+            Expr::IfElse(x) => match self.eval(&x.expr)? {
                 Value::Literal(Literal::Bool(true)) => self.eval(&x.case_true),
                 Value::Literal(Literal::Bool(false)) => self.eval(&x.case_false),
                 _ => panic!("type error"),
             },
-            Expr::Function(x) => Value::Function {
+            Expr::Function(x) => Ok(Value::Function {
                 func: x.clone(),
                 context: self.current_ctx().clone(),
-            },
+            }),
             Expr::Let(x) => {
                 self.current_ctx_enter(&x.bind);
                 if x.recursive {
@@ -282,18 +304,18 @@ impl Interpreter {
                         .recursives
                         .push((x.bind.clone(), *x.bind_expr.clone()));
                 }
-                let bind_value = self.eval(&*x.bind_expr);
+                let bind_value = self.eval(&*x.bind_expr)?;
                 self.current_ctx_mut().bind(&x.bind, bind_value);
-                let next_value = self.eval(&*x.next_expr);
+                let next_value = self.eval(&*x.next_expr)?;
                 self.current_ctx_mut().exit_ctx();
                 if x.recursive {
                     self.current_ctx_mut().recursives.pop();
                 }
-                next_value
+                Ok(next_value)
             }
             Expr::Appl(Appl { func, arg }) => {
-                let func_expr = self.eval(func);
-                let arg_expr = self.eval(arg);
+                let func_expr = self.eval(func)?;
+                let arg_expr = self.eval(arg)?;
                 match func_expr {
                     Value::Builtin(sy) => Self::eval_builtin(&sy, &arg_expr),
                     Value::Function { func, mut context } => {
@@ -307,12 +329,17 @@ impl Interpreter {
                 }
             }
             Expr::Tuple(x) => {
-                let exprs: Vec<Value> = x.exprs.iter().map(|e| self.eval(e)).collect();
-                Value::Tuple(exprs)
+                let mut exprs = Vec::with_capacity(x.exprs.len());
+                for e in &x.exprs {
+                    exprs.push(self.eval(e)?);
+                }
+                Ok(Value::Tuple(exprs))
             }
-        }
+        };
+        self.depth -= 1;
+        val
     }
-    fn eval_statement(&mut self, st: &ast::Statement) {
+    fn eval_statement(&mut self, st: &ast::Statement) -> Result<(), InterpError> {
         match st {
             ast::Statement::Let(st) => {
                 self.current_ctx_enter(&Pattern::Symbol(st.bind.clone()));
@@ -321,7 +348,7 @@ impl Interpreter {
                         .recursives
                         .push((Pattern::Symbol(st.bind.clone()), st.expr.clone()));
                 }
-                let bind_value = self.eval(&st.expr);
+                let bind_value = self.eval(&st.expr)?;
                 self.current_ctx_mut().exit_ctx();
                 self.current_ctx_mut()
                     .bind(&Pattern::Symbol(st.bind.clone()), bind_value);
@@ -330,11 +357,13 @@ impl Interpreter {
                 }
             }
         }
+        Ok(())
     }
-    pub fn eval_module(&mut self, module: &Module) {
+    pub fn eval_module(&mut self, module: &Module) -> Result<(), InterpError> {
         for st in &module.statements {
-            self.eval_statement(st);
+            self.eval_statement(st)?;
         }
+        Ok(())
     }
 }
 

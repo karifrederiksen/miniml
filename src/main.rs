@@ -8,12 +8,12 @@ mod interpreter;
 mod parser;
 pub mod prelude;
 use crate::prelude::{sym, Symbol};
+use interpreter as inter;
 use std::collections::HashMap;
 
-fn factorial_expr(n: i32) -> ast::Module {
-    let src: String = format!(
-        "
-
+fn main() {
+    let module: ast::Module = {
+        let src: &str = "
 let apply (f, x) = f x
 
 rec fact n =
@@ -22,20 +22,14 @@ rec fact n =
     else
         mul n (fact (sub n 1))
 
-let main = (fact {}, True)
-    ",
-        n
-    );
-    let src: &str = &src;
-    parser::parse_module(src).unwrap()
-}
-
-fn main() {
-    let module: ast::Module = factorial_expr(6);
+let main = (fact 5, True)
+    ";
+        parser::parse_module(src).unwrap()
+    };
     println!("{}\n\n", ast::print_module(&module));
     let global_ctx = {
-        use interpreter::Value;
-        let mut bindings: HashMap<Symbol, interpreter::Value> = HashMap::new();
+        use inter::Value;
+        let mut bindings: HashMap<Symbol, inter::Value> = HashMap::new();
         let globals = "
 eq = \\l -> \\r -> builtin_eq (l, r)
 add = \\l -> \\r -> builtin_add (l, r)
@@ -50,16 +44,33 @@ mul = \\l -> \\r -> builtin_mul (l, r)
             let val: Value = match val {
                 ast::Expr::Function(x) => Value::Function {
                     func: x,
-                    context: interpreter::ExecutionContext::new_empty(),
+                    context: inter::ExecutionContext::new_empty(),
                 },
                 _ => panic!("expected function"),
             };
             bindings.insert(key, val);
         }
-        interpreter::ExecutionContext::new_global_ctx(bindings)
+        inter::ExecutionContext::new_global_ctx(bindings)
     };
-    let mut interp = interpreter::Interpreter::new(global_ctx);
-    interp.eval_module(&module);
+    let mut interp = inter::Interpreter::new(global_ctx);
+    match interp.eval_module(&module) {
+        Err(e) => {
+            use inter::InterpError;
+            let msg = match e {
+                InterpError::StackOverflow => "stack overflow".to_owned(),
+                InterpError::TypeMismatch((expected, found)) => format!(
+                    "type mismatch: expected something of type {} and found value {}",
+                    expected, found
+                ),
+                InterpError::UndefinedSymbol(sym) => {
+                    format!("symbol used before declaration: {}", sym)
+                }
+            };
+            println!("Evaluation error: {}", msg);
+            return;
+        }
+        Ok(()) => {}
+    };
     match interp.current_ctx().find(&Symbol("main".to_owned())) {
         Some(main) => {
             println!("{}\n\n", main);
@@ -72,7 +83,6 @@ mul = \\l -> \\r -> builtin_mul (l, r)
 
 #[cfg(test)]
 mod tests {
-    use super::factorial_expr;
     use crate::interpreter;
     use test::{black_box, Bencher};
 

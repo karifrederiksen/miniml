@@ -252,7 +252,7 @@ fn u32_to_ascii(n: u32) -> String {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct VariableType(u32);
+pub struct VariableType(pub u32);
 
 impl fmt::Display for VariableType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -261,10 +261,27 @@ impl fmt::Display for VariableType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TupleType(pub Vec<Type>);
+
+impl fmt::Display for TupleType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        for e in self.0.iter().take(1) {
+            write!(f, "{}", e)?;
+        }
+        for e in self.0.iter().skip(1) {
+            write!(f, ", {}", e)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Type {
     Basic(BasicType),
     Func(Box<FunctionType>),
     Var(VariableType),
+    Tuple(TupleType),
 }
 
 impl fmt::Display for Type {
@@ -273,6 +290,7 @@ impl fmt::Display for Type {
             Self::Basic(x) => write!(f, "{}", x),
             Self::Func(x) => write!(f, "{}", x),
             Self::Var(x) => write!(f, "{}", x),
+            Self::Tuple(x) => write!(f, "{}", x),
         }
     }
 }
