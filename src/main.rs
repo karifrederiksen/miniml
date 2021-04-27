@@ -57,7 +57,7 @@ mul = \\l -> \\r -> builtin_mul (l, r)
         Err(e) => {
             use inter::InterpError;
             let msg = match e {
-                InterpError::StackOverflow => "stack overflow".to_owned(),
+                InterpError::DepthLimitReached => "stack overflow".to_owned(),
                 InterpError::TypeMismatch((expected, found)) => format!(
                     "type mismatch: expected something of type {} and found value {}",
                     expected, found

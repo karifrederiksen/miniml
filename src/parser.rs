@@ -294,11 +294,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
 }
 
 pub fn parse(s: &str) -> Result<Expr, String> {
-    let mut p = map(
-        seq::tuple((space_lf0, parse_expr, space_lf0)),
-        |(_, e, _)| e,
-    );
-    match p(s) {
+    match parse_expr(s.trim()) {
         Ok((_, e)) => Ok(e),
         Err(e) => Err(format!("{}", e)),
     }

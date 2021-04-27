@@ -141,7 +141,7 @@ impl fmt::Display for Value {
 #[derive(Debug, Clone)]
 pub enum InterpError {
     TypeMismatch((Type, Value)),
-    StackOverflow,
+    DepthLimitReached,
     UndefinedSymbol(Symbol),
 }
 
@@ -175,10 +175,12 @@ impl Interpreter {
         }
     }
 
+    #[inline]
     fn is_builtin(sy: &Symbol) -> bool {
         sy.0.starts_with("builtin_")
     }
 
+    #[inline]
     fn eval_builtin_tup2(x: &Value) -> Result<(Value, Value), InterpError> {
         match x {
             Value::Tuple(values) if values.len() == 2 => Ok((
@@ -194,6 +196,7 @@ impl Interpreter {
             ))),
         }
     }
+    #[inline]
     fn eval_builtin_int_int<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(i128, i128) -> O,
@@ -209,6 +212,7 @@ impl Interpreter {
             ))),
         }
     }
+    #[inline]
     fn eval_builtin_bool_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(bool, bool) -> O,
@@ -224,6 +228,7 @@ impl Interpreter {
             ))),
         }
     }
+    #[inline]
     fn eval_builtin_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(bool) -> O,
@@ -237,6 +242,7 @@ impl Interpreter {
         }
     }
 
+    #[inline]
     fn eval_builtin(sy: &Symbol, x: &Value) -> Result<Value, InterpError> {
         match &sy.0[8..] {
             "eq" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
@@ -251,10 +257,8 @@ impl Interpreter {
         }
     }
 
+    #[inline]
     pub fn current_ctx_enter(&mut self, sy: &Pattern) {
-        if self.execution_contexts.len() > 10_000 {
-            panic!("Stack overflow");
-        }
         let ctx = self
             .execution_contexts
             .pop()
@@ -262,12 +266,14 @@ impl Interpreter {
         self.execution_contexts.push(ctx.enter_ctx(sy));
     }
 
+    #[inline]
     pub fn current_ctx(&self) -> &ExecutionContext {
         self.execution_contexts
             .last()
             .expect("global context should exist")
     }
 
+    #[inline]
     pub fn current_ctx_mut(&mut self) -> &mut ExecutionContext {
         self.execution_contexts
             .last_mut()
@@ -276,7 +282,7 @@ impl Interpreter {
 
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpError> {
         if self.depth > 1_000 {
-            return Err(InterpError::StackOverflow);
+            return Err(InterpError::DepthLimitReached);
         }
         self.depth += 1;
         let val = match expr {
