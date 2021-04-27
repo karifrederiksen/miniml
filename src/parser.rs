@@ -9,10 +9,7 @@ use nom::multi;
 use nom::sequence as seq;
 use nom::IResult;
 
-use crate::ast::{
-    Appl, Expr, Function, IfElse, Let, LetStatement, Literal, Module, Pattern, Statement, Tuple,
-    TuplePattern,
-};
+use crate::ast::*;
 use crate::prelude::{sym, Symbol};
 
 fn is_space_or_lf(c: char) -> bool {
@@ -61,22 +58,15 @@ fn is_not_reserved(s: &str) -> bool {
     !RESERVED_SYMBOLS.contains(&s)
 }
 
-fn is_sym_char_first(c: char) -> bool {
-    "_abcdefghijklmnopqrstuvwxyz".contains(c)
-}
-fn is_sym_char_after(c: char) -> bool {
-    "_abcdefghijklmnopqrstuvwxyz0123456789".contains(c)
-}
-
 fn parse_sym(s: &str) -> IResult<&str, Symbol> {
     use std::iter::FromIterator;
     let mut p = map(
         verify(
             map(
                 seq::tuple((
-                    character::satisfy(is_sym_char_first),
+                    character::one_of("_abcdefghijklmnopqrstuvwxyz"),
                     map(
-                        multi::many0(character::satisfy(is_sym_char_after)),
+                        multi::many0(character::one_of("_abcdefghijklmnopqrstuvwxyz0123456789")),
                         String::from_iter,
                     ),
                 )),
@@ -330,11 +320,60 @@ fn parse_let_statement(s: &str) -> IResult<&str, Statement> {
     Ok((s, Statement::Let(stmt)))
 }
 
+fn parse_custom_type(s: &str) -> IResult<&str, CustomType> {
+    use std::iter::FromIterator;
+    let mut p = map(
+        seq::tuple((
+            character::one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+            map(
+                multi::many0(character::one_of(
+                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+                )),
+                String::from_iter,
+            ),
+        )),
+        |(first, second): (char, String)| CustomType(format!("{}{}", first, second)),
+    );
+    p(s)
+}
+fn parse_variant_definition(s: &str) -> IResult<&str, VariantDefinition> {
+    let mut p = map(parse_custom_type, |t| VariantDefinition {
+        constr: t,
+        expr: None,
+    });
+    p(s)
+}
+fn parse_variant(s: &str) -> IResult<&str, Variant> {
+    let mut p = map(parse_custom_type, |t| Variant {
+        constr: t,
+        value: None,
+    });
+    p(s)
+}
+
+fn parse_custom_type_statement(s: &str) -> IResult<&str, Statement> {
+    let mut p = seq::tuple((
+        seq::tuple((tag("type"), space_lf1)),
+        parse_custom_type,
+        seq::tuple((space_lf0, tag("="), space_lf0)),
+        multi::separated_list1(
+            seq::tuple((space_lf0, tag("|"), space_lf0)),
+            parse_variant_definition,
+        ),
+    ));
+    let (s, (_, name, _, variants)) = p(s)?;
+    let ty = CustomTypeDefinition { name, variants };
+    Ok((s, Statement::Type(ty)))
+}
+
 pub fn parse_module(s: &str) -> Result<Module, String> {
     let mut p = map(
         seq::tuple((
             space_lf0,
-            multi::separated_list1(space_lf1, parse_let_statement),
+            multi::separated_list1(
+                space_lf1,
+                branch::alt((parse_let_statement, parse_custom_type_statement)),
+            ),
             space_lf0,
         )),
         |(_, statements, _)| Module { statements },

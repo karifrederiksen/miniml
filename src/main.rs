@@ -14,6 +14,8 @@ use std::collections::HashMap;
 fn main() {
     let module: ast::Module = {
         let src: &str = "
+type Boolean = Tr | Fa
+
 let apply (f, x) = f x
 
 rec fact n =
@@ -22,7 +24,7 @@ rec fact n =
     else
         mul n (fact (sub n 1))
 
-let main = (fact 5, True)
+let main = (fact 6, not False)
     ";
         parser::parse_module(src).unwrap()
     };
@@ -35,6 +37,9 @@ eq = \\l -> \\r -> builtin_eq (l, r)
 add = \\l -> \\r -> builtin_add (l, r)
 sub = \\l -> \\r -> builtin_sub (l, r)
 mul = \\l -> \\r -> builtin_mul (l, r)
+not = builtin_not
+and = \\l -> \\r -> builtin_and (l, r)
+or = \\l -> \\r -> builtin_or (l, r)
         "
         .trim();
         for x in globals.split("\n") {
@@ -46,6 +51,7 @@ mul = \\l -> \\r -> builtin_mul (l, r)
                     func: x,
                     context: inter::ExecutionContext::new_empty(),
                 },
+                ast::Expr::Symbol(x) if x.0.starts_with("builtin_") => Value::Builtin(x),
                 _ => panic!("expected function"),
             };
             bindings.insert(key, val);

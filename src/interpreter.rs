@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::prelude::Symbol;
-use ast::{Appl, BasicType, Expr, Literal, Module, Pattern, TupleType, Type, VariableType};
+use ast::*;
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
 use std::collections::*;
@@ -347,7 +347,7 @@ impl Interpreter {
     }
     fn eval_statement(&mut self, st: &ast::Statement) -> Result<(), InterpError> {
         match st {
-            ast::Statement::Let(st) => {
+            Statement::Let(st) => {
                 self.current_ctx_enter(&Pattern::Symbol(st.bind.clone()));
                 if st.recursive {
                     self.current_ctx_mut()
@@ -361,6 +361,10 @@ impl Interpreter {
                 if st.recursive {
                     self.current_ctx_mut().recursives.pop();
                 }
+            }
+            Statement::Type(t) => {
+                //
+                todo!()
             }
         }
         Ok(())

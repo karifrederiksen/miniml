@@ -40,14 +40,58 @@ impl fmt::Display for TuplePattern {
     }
 }
 
-pub struct VariantConstr(String);
-
-pub struct Variant {
-    pub constr: VariantConstr,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantDefinition {
+    pub constr: CustomType,
+    pub expr: Option<Type>,
+}
+impl fmt::Display for VariantDefinition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.constr)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VariantDefinition {}
+pub struct Variant {
+    pub constr: CustomType,
+    pub value: Option<Expr>,
+}
+impl fmt::Display for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.constr)?;
+        if let Some(value) = &self.value {
+            write!(f, " {}", value)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomType(pub String);
+
+impl fmt::Display for CustomType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomTypeDefinition {
+    pub name: CustomType,
+    pub variants: Vec<VariantDefinition>,
+}
+impl fmt::Display for CustomTypeDefinition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "type {}", self.name)?;
+        for v in self.variants.iter().take(1) {
+            writeln!(f, "    = {}", v)?;
+        }
+        for v in self.variants.iter().skip(1) {
+            writeln!(f, "    | {}", v)?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
@@ -202,6 +246,7 @@ pub struct LetStatement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
     Let(LetStatement),
+    Type(CustomTypeDefinition),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -436,6 +481,9 @@ pub fn print_module(p: &Module) -> String {
                     s.push_str("let");
                 }
                 s.push_str(&format!(" {} = {}\n\n", &st.bind, &printer.text));
+            }
+            Statement::Type(t) => {
+                s.push_str(&format!("{}\n", t));
             }
         }
     }
