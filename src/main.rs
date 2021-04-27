@@ -16,7 +16,7 @@ fn main() {
         let src: &str = "
 type Boolean = Tr | Fa
 
-let apply (f, x) = f x
+let f x = match x with Tr -> 1, Fa -> 0
 
 rec fact n =
     if eq n 0 then

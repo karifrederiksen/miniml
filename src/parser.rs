@@ -52,7 +52,9 @@ fn parse_literal_expr(s: &str) -> IResult<&str, Expr> {
     p(s)
 }
 
-const RESERVED_SYMBOLS: [&'static str; 7] = ["let", "rec", "in", "if", "then", "else", "fn"];
+const RESERVED_SYMBOLS: [&'static str; 9] = [
+    "let", "rec", "in", "if", "then", "else", "fn", "match", "with",
+];
 
 fn is_not_reserved(s: &str) -> bool {
     !RESERVED_SYMBOLS.contains(&s)
@@ -92,13 +94,26 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
             tag(","),
             seq::preceded(space_lf0, seq::terminated(parse_pattern, space_lf0)),
         ),
-        |patterns| Pattern::Tuple(TuplePattern { patterns }),
+        |x| Pattern::Tuple(TuplePattern(x)),
     );
     let mut p = seq::preceded(tag("("), seq::terminated(p, tag(")")));
     p(s)
 }
+fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
+    let mut p = map(parse_custom_type, |t| {
+        Pattern::Variant(VariantPattern {
+            constr: t,
+            pattern: None,
+        })
+    });
+    p(s)
+}
 fn parse_pattern(s: &str) -> IResult<&str, Pattern> {
-    let mut p = branch::alt((parse_sym_pattern, parse_tuple_pattern));
+    let mut p = branch::alt((
+        parse_sym_pattern,
+        parse_tuple_pattern,
+        parse_variant_pattern,
+    ));
     p(s)
 }
 fn parse_line_comment(s: &str) -> IResult<&str, &str> {
@@ -240,6 +255,38 @@ fn parse_tuple_expr(s: &str) -> IResult<&str, Expr> {
     );
     p(s)
 }
+// pub struct MatchCase {
+//     pub pattern: Pattern,
+//     pub expr: Box<Expr>,
+// }
+
+fn parse_match_expr(s: &str) -> IResult<&str, Expr> {
+    let case_p = map(
+        seq::tuple((
+            parse_pattern,
+            seq::tuple((space_lf0, tag("->"), space_lf0)),
+            parse_expr,
+        )),
+        |(pattern, _, expr)| MatchCase {
+            pattern,
+            expr: Box::new(expr),
+        },
+    );
+    let mut p = seq::tuple((
+        seq::tuple((tag("match"), space_lf1)),
+        parse_expr,
+        seq::tuple((space_lf1, tag("with"), space_lf1)),
+        multi::separated_list1(seq::tuple((space_lf0, tag(","), space_lf0)), case_p),
+    ));
+    let (s, (_, expr, _, cases)) = p(s)?;
+    Ok((
+        s,
+        Expr::Match(Match {
+            expr: Box::new(expr),
+            cases,
+        }),
+    ))
+}
 
 fn parse_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = context(
@@ -250,6 +297,7 @@ fn parse_expr(s: &str) -> IResult<&str, Expr> {
             parse_func_expr,
             parse_let_expr,
             parse_if_else_expr,
+            parse_match_expr,
             parse_sym_expr,
         )),
     );

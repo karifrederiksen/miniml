@@ -8,6 +8,71 @@ use std::fmt;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
+pub enum Value {
+    Literal(Literal),
+    Tuple(Vec<Value>),
+    Function {
+        func: ast::Function,
+        context: ExecutionContext,
+    },
+    Variant((CustomType, Option<Box<Value>>)),
+    Builtin(Symbol),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Literal(x) => {
+                write!(f, "{}", x)
+            }
+            Self::Tuple(xs) => {
+                write!(f, "(")?;
+                for x in xs.iter().take(1) {
+                    write!(f, "{}", x)?;
+                }
+                for x in xs.iter().skip(1) {
+                    write!(f, ", {}", x)?;
+                }
+                write!(f, ")")
+            }
+            Self::Function { func, context: _ } => {
+                write!(f, "{}", func)
+            }
+            Self::Variant((ty, sym)) => {
+                write!(f, "{}", ty)?;
+                if let Some(sym) = sym {
+                    write!(f, " {}", sym)?;
+                }
+                Ok(())
+            }
+            Self::Builtin(sym) => {
+                write!(f, "{}", sym)
+            }
+        }
+    }
+}
+impl Value {
+    fn matches(&self, pat: &Pattern) -> bool {
+        match (pat, self) {
+            (Pattern::Symbol(_), _) => true,
+            (Pattern::Variant(p), Self::Variant((v_constr, _))) => p.constr == *v_constr,
+            (Pattern::Tuple(p), Self::Tuple(vals)) => {
+                if p.0.len() != vals.len() {
+                    return false;
+                }
+                for i in 0..p.0.len() {
+                    if !vals.get(i).unwrap().matches(p.0.get(i).unwrap()) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ExecutionContext {
     bindings: HashMap<Symbol, Value>,
     recursives: Vec<(Pattern, Expr)>,
@@ -69,18 +134,33 @@ impl ExecutionContext {
         }
     }
 
-    pub fn bind(&mut self, pat: &Pattern, val: Value) {
+    pub fn bind(&mut self, pat: &Pattern, val: Value) -> Result<(), InterpError> {
         match (pat, val) {
             (Pattern::Symbol(s), val) => {
                 self.bindings.insert(s.clone(), val);
+                Ok(())
             }
             (Pattern::Tuple(tp), Value::Tuple(tv)) => {
-                for i in 0..tp.patterns.len() {
-                    self.bind(tp.patterns.get(i).unwrap(), tv.get(i).unwrap().clone());
+                for i in 0..tp.0.len() {
+                    self.bind(tp.0.get(i).unwrap(), tv.get(i).unwrap().clone())?;
+                }
+                Ok(())
+            }
+            (Pattern::Variant(v), Value::Variant((ty, val))) => {
+                if v.constr == ty {
+                    match (&v.pattern, val) {
+                        (Some(pattern), Some(val)) => {
+                            self.bind(&*pattern, *val)?;
+                        }
+                        _ => panic!("pattern mismatch"),
+                    }
+                    Ok(())
+                } else {
+                    panic!("I think this is supposed to be handled earlier")
                 }
             }
             (pat, val) => panic!("mismatch between pattern {} and value {}", pat, val),
-        };
+        }
     }
 
     pub fn enter_ctx(self, name: &Pattern) -> Self {
@@ -102,43 +182,6 @@ impl ExecutionContext {
 }
 
 #[derive(Debug, Clone)]
-pub enum Value {
-    Literal(Literal),
-    Tuple(Vec<Value>),
-    Function {
-        func: ast::Function,
-        context: ExecutionContext,
-    },
-    Builtin(Symbol),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Literal(x) => {
-                write!(f, "{}", x)
-            }
-            Self::Tuple(xs) => {
-                write!(f, "(")?;
-                for x in xs.iter().take(1) {
-                    write!(f, "{}", x)?;
-                }
-                for x in xs.iter().skip(1) {
-                    write!(f, ", {}", x)?;
-                }
-                write!(f, ")")
-            }
-            Self::Function { func, context: _ } => {
-                write!(f, "{}", func)
-            }
-            Self::Builtin(sym) => {
-                write!(f, "{}", sym)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum InterpError {
     TypeMismatch((Type, Value)),
     DepthLimitReached,
@@ -148,6 +191,7 @@ pub enum InterpError {
 #[derive(Debug)]
 pub struct Interpreter {
     execution_contexts: Vec<ExecutionContext>,
+    types: HashMap<CustomType, CustomTypeDefinition>,
     depth: usize,
 }
 
@@ -155,6 +199,7 @@ impl Interpreter {
     pub fn new(global_context: ExecutionContext) -> Self {
         Self {
             execution_contexts: vec![global_context],
+            types: HashMap::new(),
             depth: 0,
         }
     }
@@ -311,7 +356,7 @@ impl Interpreter {
                         .push((x.bind.clone(), *x.bind_expr.clone()));
                 }
                 let bind_value = self.eval(&*x.bind_expr)?;
-                self.current_ctx_mut().bind(&x.bind, bind_value);
+                self.current_ctx_mut().bind(&x.bind, bind_value)?;
                 let next_value = self.eval(&*x.next_expr)?;
                 self.current_ctx_mut().exit_ctx();
                 if x.recursive {
@@ -325,7 +370,7 @@ impl Interpreter {
                 match func_expr {
                     Value::Builtin(sy) => Self::eval_builtin(&sy, &arg_expr),
                     Value::Function { func, mut context } => {
-                        context.bind(&func.bind, arg_expr);
+                        context.bind(&func.bind, arg_expr)?;
                         self.execution_contexts.push(context);
                         let e = self.eval(&func.expr);
                         self.execution_contexts.pop();
@@ -340,6 +385,20 @@ impl Interpreter {
                     exprs.push(self.eval(e)?);
                 }
                 Ok(Value::Tuple(exprs))
+            }
+            Expr::Match(x) => {
+                let mut val: Option<Value> = None;
+                let value = self.eval(&x.expr)?;
+                for c in &x.cases {
+                    if value.matches(&c.pattern) {
+                        val = Some(self.eval(&*c.expr)?);
+                    }
+                }
+                let val = match val {
+                    None => panic!("no matching pattern"),
+                    Some(x) => x,
+                };
+                Ok(val)
             }
         };
         self.depth -= 1;
@@ -357,14 +416,13 @@ impl Interpreter {
                 let bind_value = self.eval(&st.expr)?;
                 self.current_ctx_mut().exit_ctx();
                 self.current_ctx_mut()
-                    .bind(&Pattern::Symbol(st.bind.clone()), bind_value);
+                    .bind(&Pattern::Symbol(st.bind.clone()), bind_value)?;
                 if st.recursive {
                     self.current_ctx_mut().recursives.pop();
                 }
             }
             Statement::Type(t) => {
-                //
-                todo!()
+                // no op?
             }
         }
         Ok(())

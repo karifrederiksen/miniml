@@ -24,16 +24,15 @@ impl fmt::Display for Literal {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TuplePattern {
-    pub patterns: Vec<Pattern>,
-}
+pub struct TuplePattern(pub Vec<Pattern>);
+
 impl fmt::Display for TuplePattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
-        for e in self.patterns.iter().take(1) {
+        for e in self.0.iter().take(1) {
             write!(f, "{}", e)?;
         }
-        for e in self.patterns.iter().skip(1) {
+        for e in self.0.iter().skip(1) {
             write!(f, ", {}", e)?;
         }
         write!(f, ")")
@@ -66,7 +65,7 @@ impl fmt::Display for Variant {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CustomType(pub String);
 
 impl fmt::Display for CustomType {
@@ -94,15 +93,33 @@ impl fmt::Display for CustomTypeDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantPattern {
+    pub constr: CustomType,
+    pub pattern: Option<Box<Pattern>>,
+}
+
+impl fmt::Display for VariantPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.constr)?;
+        if let Some(pattern) = &self.pattern {
+            write!(f, "{}", pattern)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
     Symbol(Symbol),
     Tuple(TuplePattern),
+    Variant(VariantPattern),
 }
 impl fmt::Display for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Pattern::Symbol(x) => write!(f, "{}", x),
-            Pattern::Tuple(x) => write!(f, "{}", x),
+            Self::Symbol(x) => write!(f, "{}", x),
+            Self::Tuple(x) => write!(f, "{}", x),
+            Self::Variant(x) => write!(f, "{}", x),
         }
     }
 }
@@ -110,7 +127,11 @@ impl Pattern {
     pub fn contains(&self, s: &Symbol) -> bool {
         match self {
             Self::Symbol(x) => x == s,
-            Self::Tuple(ts) => ts.patterns.iter().any(|x| x.contains(s)),
+            Self::Tuple(ts) => ts.0.iter().any(|x| x.contains(s)),
+            Self::Variant(v) => match &v.pattern {
+                None => false,
+                Some(x) => x.contains(s),
+            },
         }
     }
 }
@@ -199,6 +220,30 @@ pub fn tuple_expr(exprs: Vec<Expr>) -> Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Match {
+    pub expr: Box<Expr>,
+    pub cases: Vec<MatchCase>,
+}
+impl fmt::Display for Match {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "match {} with", self.expr)?;
+        for c in self.cases.iter().take(1) {
+            write!(f, "{} -> {}", c.pattern, c.expr)?;
+        }
+        for c in self.cases.iter().skip(1) {
+            write!(f, ", {} -> {}", c.pattern, c.expr)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchCase {
+    pub pattern: Pattern,
+    pub expr: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Symbol(Symbol),
     Literal(Literal),
@@ -207,6 +252,7 @@ pub enum Expr {
     Appl(Appl),
     IfElse(IfElse),
     Tuple(Tuple),
+    Match(Match),
 }
 
 impl fmt::Display for Expr {
@@ -231,6 +277,9 @@ impl fmt::Display for Expr {
                 write!(f, "{}", x)
             }
             Self::Tuple(x) => {
+                write!(f, "{}", x)
+            }
+            Self::Match(x) => {
                 write!(f, "{}", x)
             }
         }
@@ -432,6 +481,22 @@ impl Printer {
                 self.print(&x.expr);
                 self.indent_decr();
                 self.print_str(")");
+            }
+            Expr::Match(x) => {
+                self.print_str("match ");
+                self.print(&*x.expr);
+                self.print_str(" with");
+                self.indent_incr();
+                for c in &x.cases {
+                    self.print_str(&format!("{}", c.pattern));
+                    self.space();
+                    self.print_str("->");
+                    self.space();
+                    self.print(&c.expr);
+                    self.print_str(",");
+                    self.newline();
+                }
+                self.indent_decr();
             }
         }
     }
