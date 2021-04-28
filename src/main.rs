@@ -7,6 +7,7 @@ pub mod ast;
 mod interpreter;
 mod parser;
 pub mod prelude;
+mod type_recon;
 use crate::prelude::{sym, Symbol};
 use interpreter as inter;
 use std::collections::HashMap;

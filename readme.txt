@@ -2,7 +2,11 @@ records = tuples with fields in a total order (perhaps alphabetic by name)
 
 # ideas to explore
 
+* pattern matching exhaustiveness checking
 * operators
+* pattern-matching in function definition:
+    fact 0 = 1
+    fact n = n * (fact (n - 1))
 * open variant types
 * closed variant types
 * let-desugaring

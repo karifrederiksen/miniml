@@ -1,4 +1,5 @@
 use crate::prelude::{sym, Symbol};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,6 +355,18 @@ impl fmt::Display for VariableType {
     }
 }
 
+#[derive(Debug)]
+pub struct VariableTypeGenerator {
+    next: u32,
+}
+impl VariableTypeGenerator {
+    pub fn next(&mut self) -> VariableType {
+        let id = self.next;
+        self.next += 1;
+        VariableType(id)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TupleType(pub Vec<Type>);
 
@@ -386,6 +399,102 @@ impl fmt::Display for Type {
             Self::Var(x) => write!(f, "{}", x),
             Self::Tuple(x) => write!(f, "{}", x),
         }
+    }
+}
+
+impl Type {
+    fn add_vars(&self, vars: &mut HashSet<VariableType>) {
+        match self {
+            Self::Var(x) => {
+                vars.insert(x.clone());
+            }
+            Self::Tuple(xs) => {
+                for x in &xs.0 {
+                    x.add_vars(vars);
+                }
+            }
+            Self::Func(x) => {
+                x.arg.add_vars(vars);
+                x.return_.add_vars(vars);
+            }
+            Self::Basic(_) => {}
+        }
+    }
+    pub fn vars(&self) -> HashSet<VariableType> {
+        let mut vars: HashSet<_> = HashSet::new();
+        self.add_vars(&mut vars);
+        vars
+    }
+    fn replace(&mut self, replacement: &HashMap<VariableType, Type>) {
+        match self {
+            Self::Var(x) => {
+                if let Some(next) = replacement.get(x).cloned() {
+                    *self = next;
+                }
+            }
+            Self::Tuple(xs) => {
+                for x in xs.0.iter_mut() {
+                    x.replace(replacement);
+                }
+            }
+            Self::Func(x) => {
+                x.arg.replace(replacement);
+                x.return_.replace(replacement);
+            }
+            Self::Basic(_) => {}
+        }
+    }
+
+    pub fn generalize(self, gen: &mut VariableTypeGenerator) -> TypeScheme {
+        let vars = self.vars();
+        let next_vars: HashSet<VariableType> = vars.iter().map(|_| gen.next()).collect();
+        let replacements: HashMap<VariableType, Type> = vars
+            .into_iter()
+            .zip(next_vars.iter())
+            .map(|(from, to)| (from, Type::Var(*to)))
+            .collect();
+        let mut t = self;
+        t.replace(&replacements);
+        TypeScheme {
+            variables: next_vars,
+            type_: t,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeScheme {
+    pub variables: HashSet<VariableType>,
+    pub type_: Type,
+}
+
+impl fmt::Display for TypeScheme {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "forall ")?;
+        for v in &self.variables {
+            write!(f, "{} ", v);
+        }
+        write!(f, "=> {}", self.type_)
+    }
+}
+impl TypeScheme {
+    pub fn free_vars(&self) -> HashSet<VariableType> {
+        let mut vars: HashSet<_> = self.type_.vars();
+        for bound in &self.variables {
+            vars.remove(bound);
+        }
+        vars
+    }
+
+    pub fn instantiate(&self, gen: &mut VariableTypeGenerator) -> Type {
+        let replacements: HashMap<VariableType, Type> = self
+            .free_vars()
+            .into_iter()
+            .map(|v| (v, Type::Var(gen.next())))
+            .collect();
+        let mut t = self.type_.clone();
+        t.replace(&replacements);
+        t
     }
 }
 
