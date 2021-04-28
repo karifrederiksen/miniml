@@ -156,7 +156,7 @@ impl ExecutionContext {
                     }
                     Ok(())
                 } else {
-                    panic!("I think this is supposed to be handled earlier")
+                    unreachable!("I think this is supposed to be handled earlier")
                 }
             }
             (pat, val) => panic!("mismatch between pattern {} and value {}", pat, val),
@@ -175,7 +175,7 @@ impl ExecutionContext {
 
     pub fn exit_ctx(&mut self) {
         match &self.previous {
-            None => panic!("global context can't be exited"),
+            None => unreachable!("global context can't be exited"),
             Some(prev) => *self = (**prev).clone(),
         };
     }
@@ -342,7 +342,10 @@ impl Interpreter {
             Expr::IfElse(x) => match self.eval(&x.expr)? {
                 Value::Literal(Literal::Bool(true)) => self.eval(&x.case_true),
                 Value::Literal(Literal::Bool(false)) => self.eval(&x.case_false),
-                _ => panic!("type error"),
+                x => Err(InterpError::TypeMismatch((
+                    Type::Basic(BasicType::Bool),
+                    x.clone(),
+                ))),
             },
             Expr::Function(x) => Ok(Value::Function {
                 func: x.clone(),

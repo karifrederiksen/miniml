@@ -52,7 +52,7 @@ or = \\l -> \\r -> builtin_or (l, r)
                     context: inter::ExecutionContext::new_empty(),
                 },
                 ast::Expr::Symbol(x) if x.0.starts_with("builtin_") => Value::Builtin(x),
-                _ => panic!("expected function"),
+                _ => unreachable!("expected function"),
             };
             bindings.insert(key, val);
         }
