@@ -11,8 +11,8 @@ pub fn prelude_ctx(gen: &mut VariableTypeGenerator) -> SymbolTypeContext {
     let t_a = Type::Var(gen.next());
     let t_bool = Type::Basic(BasicType::Bool);
     let t_int = Type::Basic(BasicType::Int);
-    let arity_1_builtins = vec![("not", (t_bool.clone(), t_bool.clone()))];
-    let arity_2_builtins = vec![
+    let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
+    let arity_2_intrinsics = vec![
         ("eq", (t_a.clone(), t_a.clone(), t_bool.clone())),
         ("add", (t_int.clone(), t_int.clone(), t_int.clone())),
         ("sub", (t_int.clone(), t_int.clone(), t_int.clone())),
@@ -23,26 +23,26 @@ pub fn prelude_ctx(gen: &mut VariableTypeGenerator) -> SymbolTypeContext {
         ("or", (t_bool.clone(), t_bool.clone(), t_bool.clone())),
     ];
 
-    for (name, (r, out)) in arity_1_builtins.into_iter() {
+    for (name, (r, out)) in arity_1_intrinsics.into_iter() {
         let t = Type::Func(Box::new(FunctionType {
             arg: r,
             return_: out,
         }));
         ctx.insert(
-            sym(format!("builtin_{}", name)),
+            sym(format!("intrinsic_{}", name)),
             TypeScheme {
                 variables: t.vars(),
                 type_: t,
             },
         );
     }
-    for (name, (l, r, out)) in arity_2_builtins.into_iter() {
+    for (name, (l, r, out)) in arity_2_intrinsics.into_iter() {
         let t = Type::Func(Box::new(FunctionType {
             arg: Type::Tuple(TupleType(vec![l, r])),
             return_: out,
         }));
         ctx.insert(
-            sym(format!("builtin_{}", name)),
+            sym(format!("intrinsic_{}", name)),
             TypeScheme {
                 variables: t.vars(),
                 type_: t,

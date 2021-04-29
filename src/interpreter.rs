@@ -16,7 +16,7 @@ pub enum Value {
         context: ExecutionContext,
     },
     Variant((CustomType, Option<Box<Value>>)),
-    Builtin(Symbol),
+    Intrinsic(Symbol),
 }
 
 impl fmt::Display for Value {
@@ -45,7 +45,7 @@ impl fmt::Display for Value {
                 }
                 Ok(())
             }
-            Self::Builtin(sym) => {
+            Self::Intrinsic(sym) => {
                 write!(f, "{}", sym)
             }
         }
@@ -221,12 +221,12 @@ impl Interpreter {
     }
 
     #[inline]
-    fn is_builtin(sy: &Symbol) -> bool {
-        sy.0.starts_with("builtin_")
+    fn is_intrinsic(sy: &Symbol) -> bool {
+        sy.0.starts_with("intrinsic_")
     }
 
     #[inline]
-    fn eval_builtin_tup2(x: &Value) -> Result<(Value, Value), InterpError> {
+    fn eval_tup2(x: &Value) -> Result<(Value, Value), InterpError> {
         match x {
             Value::Tuple(values) if values.len() == 2 => Ok((
                 values.get(0).unwrap().clone(),
@@ -242,11 +242,11 @@ impl Interpreter {
         }
     }
     #[inline]
-    fn eval_builtin_int_int<F, O>(x: &Value, f: F) -> Result<O, InterpError>
+    fn eval_intrinsic_int_int<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(i128, i128) -> O,
     {
-        match Self::eval_builtin_tup2(x)? {
+        match Self::eval_tup2(x)? {
             (Value::Literal(Literal::Int(l)), Value::Literal(Literal::Int(r))) => Ok(f(l, r)),
             (l, r) => Err(InterpError::TypeMismatch((
                 Type::Tuple(TupleType(vec![
@@ -258,11 +258,11 @@ impl Interpreter {
         }
     }
     #[inline]
-    fn eval_builtin_bool_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
+    fn eval_intrinsic_bool_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(bool, bool) -> O,
     {
-        match Self::eval_builtin_tup2(x)? {
+        match Self::eval_tup2(x)? {
             (Value::Literal(Literal::Bool(l)), Value::Literal(Literal::Bool(r))) => Ok(f(l, r)),
             (l, r) => Err(InterpError::TypeMismatch((
                 Type::Tuple(TupleType(vec![
@@ -274,7 +274,7 @@ impl Interpreter {
         }
     }
     #[inline]
-    fn eval_builtin_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
+    fn eval_intrinsic_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
     where
         F: FnOnce(bool) -> O,
     {
@@ -288,16 +288,18 @@ impl Interpreter {
     }
 
     #[inline]
-    fn eval_builtin(sy: &Symbol, x: &Value) -> Result<Value, InterpError> {
-        match &sy.0[8..] {
-            "eq" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
-            "add" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Int(l + r))),
-            "sub" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Int(l - r))),
-            "mul" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Int(l * r))),
-            "div" => Self::eval_builtin_int_int(x, |l, r| Value::Literal(Literal::Int(l / r))),
-            "and" => Self::eval_builtin_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l && r))),
-            "or" => Self::eval_builtin_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l || r))),
-            "not" => Self::eval_builtin_bool(x, |x| Value::Literal(Literal::Bool(!x))),
+    fn eval_intrinsic(sy: &Symbol, x: &Value) -> Result<Value, InterpError> {
+        match &sy.0[10..] {
+            "eq" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
+            "add" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l + r))),
+            "sub" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l - r))),
+            "mul" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l * r))),
+            "div" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l / r))),
+            "and" => {
+                Self::eval_intrinsic_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l && r)))
+            }
+            "or" => Self::eval_intrinsic_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l || r))),
+            "not" => Self::eval_intrinsic_bool(x, |x| Value::Literal(Literal::Bool(!x))),
             _ => Err(InterpError::UndefinedSymbol(sy.clone())),
         }
     }
@@ -333,8 +335,8 @@ impl Interpreter {
         let val = match expr {
             Expr::Literal(x) => Ok(Value::Literal(*x)),
             Expr::Symbol(x) => {
-                if Self::is_builtin(x) {
-                    Ok(Value::Builtin(x.clone()))
+                if Self::is_intrinsic(x) {
+                    Ok(Value::Intrinsic(x.clone()))
                 } else {
                     self.get(x)
                 }
@@ -371,7 +373,7 @@ impl Interpreter {
                 let func_expr = self.eval(func)?;
                 let arg_expr = self.eval(arg)?;
                 match func_expr {
-                    Value::Builtin(sy) => Self::eval_builtin(&sy, &arg_expr),
+                    Value::Intrinsic(sy) => Self::eval_intrinsic(&sy, &arg_expr),
                     Value::Function { func, mut context } => {
                         context.bind(&func.bind, arg_expr)?;
                         self.execution_contexts.push(context);

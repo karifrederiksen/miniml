@@ -34,13 +34,13 @@ let main = (fact 6, f Fa)
         use inter::Value;
         let mut bindings: HashMap<Symbol, inter::Value> = HashMap::new();
         let globals = "
-eq = \\l -> \\r -> builtin_eq (l, r)
-add = \\l -> \\r -> builtin_add (l, r)
-sub = \\l -> \\r -> builtin_sub (l, r)
-mul = \\l -> \\r -> builtin_mul (l, r)
-not = builtin_not
-and = \\l -> \\r -> builtin_and (l, r)
-or = \\l -> \\r -> builtin_or (l, r)
+eq = \\l -> \\r -> intrinsic_eq (l, r)
+add = \\l -> \\r -> intrinsic_add (l, r)
+sub = \\l -> \\r -> intrinsic_sub (l, r)
+mul = \\l -> \\r -> intrinsic_mul (l, r)
+not = intrinsic_not
+and = \\l -> \\r -> intrinsic_and (l, r)
+or = \\l -> \\r -> intrinsic_or (l, r)
         "
         .trim();
         for x in globals.split("\n") {
@@ -52,7 +52,7 @@ or = \\l -> \\r -> builtin_or (l, r)
                     func: x,
                     context: inter::ExecutionContext::new_empty(),
                 },
-                ast::Expr::Symbol(x) if x.0.starts_with("builtin_") => Value::Builtin(x),
+                ast::Expr::Symbol(x) if x.0.starts_with("intrinsic_") => Value::Intrinsic(x),
                 _ => unreachable!("expected function"),
             };
             bindings.insert(key, val);
