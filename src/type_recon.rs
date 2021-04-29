@@ -25,8 +25,8 @@ impl SymbolTypeContext {
 
     pub fn add_prelude(&mut self, gen: &mut VariableTypeGenerator) {
         let t_a = Type::Var(gen.next());
-        let t_bool = Type::Basic(BasicType::Bool);
-        let t_int = Type::Basic(BasicType::Int);
+        let t_bool = Type::Intrinsic(IntrinsicType::Bool);
+        let t_int = Type::Intrinsic(IntrinsicType::Int);
         let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
         let arity_2_intrinsics = vec![
             ("eq", (t_a.clone(), t_a.clone(), t_bool.clone())),
@@ -83,8 +83,8 @@ impl SymbolTypeContext {
         expr: &Expr,
     ) -> Result<Type, Error> {
         match expr {
-            Expr::Literal(Literal::Bool(_)) => Ok(Type::Basic(BasicType::Bool)),
-            Expr::Literal(Literal::Int(_)) => Ok(Type::Basic(BasicType::Int)),
+            Expr::Literal(Literal::Bool(_)) => Ok(Type::Intrinsic(IntrinsicType::Bool)),
+            Expr::Literal(Literal::Int(_)) => Ok(Type::Intrinsic(IntrinsicType::Int)),
             Expr::Symbol(x) => match self.global_symbol_type_map.get(x) {
                 Some(x) => Ok(x.instantiate(gen)),
                 None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
@@ -116,7 +116,7 @@ impl SymbolTypeContext {
             }
             Expr::IfElse(x) => {
                 let expr = self.infer_expr(gen, scope_bindings, subst, &x.expr)?;
-                subst.unify(expr, Type::Basic(BasicType::Bool))?;
+                subst.unify(expr, Type::Intrinsic(IntrinsicType::Bool))?;
                 let case_true = self.infer_expr(gen, scope_bindings, subst, &x.case_true)?;
                 let case_false = self.infer_expr(gen, scope_bindings, subst, &x.case_false)?;
                 subst.unify(case_true.clone(), case_false)?;
@@ -256,7 +256,7 @@ impl Substitution {
             Type::Tuple(t) => {
                 Type::Tuple(TupleType(t.0.into_iter().map(|t| self.apply(t)).collect()))
             }
-            Type::Basic(t) => Type::Basic(t),
+            Type::Intrinsic(t) => Type::Intrinsic(t),
             Type::Custom(t) => Type::Custom(t),
         }
     }

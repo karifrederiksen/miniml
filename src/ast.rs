@@ -305,12 +305,12 @@ pub struct Module {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum BasicType {
+pub enum IntrinsicType {
     Bool,
     Int,
 }
 
-impl fmt::Display for BasicType {
+impl fmt::Display for IntrinsicType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bool => {
@@ -397,7 +397,7 @@ impl fmt::Display for TupleType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Type {
-    Basic(BasicType),
+    Intrinsic(IntrinsicType),
     Func(Box<FunctionType>),
     Var(VariableType),
     Tuple(TupleType),
@@ -407,7 +407,7 @@ pub enum Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Basic(x) => write!(f, "{}", x),
+            Self::Intrinsic(x) => write!(f, "{}", x),
             Self::Func(x) => write!(f, "{}", x),
             Self::Var(x) => write!(f, "{}", x),
             Self::Tuple(x) => write!(f, "{}", x),
@@ -431,7 +431,7 @@ impl Type {
                 x.arg.add_vars(vars);
                 x.return_.add_vars(vars);
             }
-            Self::Basic(_) => {}
+            Self::Intrinsic(_) => {}
             Self::Custom(_) => {}
         }
     }
@@ -456,7 +456,7 @@ impl Type {
                 x.arg.replace(replacement);
                 x.return_.replace(replacement);
             }
-            Self::Basic(_) => {}
+            Self::Intrinsic(_) => {}
             Self::Custom(_) => {}
         }
     }

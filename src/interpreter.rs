@@ -254,8 +254,8 @@ impl Interpreter {
             (Value::Literal(Literal::Int(l)), Value::Literal(Literal::Int(r))) => Ok(f(l, r)),
             (l, r) => Err(InterpError::TypeMismatch((
                 Type::Tuple(TupleType(vec![
-                    Type::Basic(BasicType::Int),
-                    Type::Basic(BasicType::Int),
+                    Type::Intrinsic(IntrinsicType::Int),
+                    Type::Intrinsic(IntrinsicType::Int),
                 ])),
                 Value::Tuple(vec![l, r]),
             ))),
@@ -270,8 +270,8 @@ impl Interpreter {
             (Value::Literal(Literal::Bool(l)), Value::Literal(Literal::Bool(r))) => Ok(f(l, r)),
             (l, r) => Err(InterpError::TypeMismatch((
                 Type::Tuple(TupleType(vec![
-                    Type::Basic(BasicType::Bool),
-                    Type::Basic(BasicType::Bool),
+                    Type::Intrinsic(IntrinsicType::Bool),
+                    Type::Intrinsic(IntrinsicType::Bool),
                 ])),
                 Value::Tuple(vec![l, r]),
             ))),
@@ -285,7 +285,7 @@ impl Interpreter {
         match x {
             Value::Literal(Literal::Bool(x)) => Ok(f(*x)),
             x => Err(InterpError::TypeMismatch((
-                Type::Basic(BasicType::Bool),
+                Type::Intrinsic(IntrinsicType::Bool),
                 x.clone(),
             ))),
         }
@@ -349,7 +349,7 @@ impl Interpreter {
                 Value::Literal(Literal::Bool(true)) => self.eval(&x.case_true),
                 Value::Literal(Literal::Bool(false)) => self.eval(&x.case_false),
                 x => Err(InterpError::TypeMismatch((
-                    Type::Basic(BasicType::Bool),
+                    Type::Intrinsic(IntrinsicType::Bool),
                     x.clone(),
                 ))),
             },
