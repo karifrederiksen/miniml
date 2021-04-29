@@ -1,64 +1,210 @@
 use crate::ast::*;
 use crate::prelude::{sym, Symbol};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::iter::FromIterator;
 
-enum Error {
+#[derive(Clone, Debug)]
+pub enum Error {
     TypeMismatch((Type, Type)),
     TupleArityMismatch,
 }
 
-type SymbolTypeContext = HashMap<Symbol, TypeScheme>;
-
-pub fn prelude_ctx(gen: &mut VariableTypeGenerator) -> SymbolTypeContext {
-    let mut ctx = SymbolTypeContext::new();
-
-    let t_a = Type::Var(gen.next());
-    let t_bool = Type::Basic(BasicType::Bool);
-    let t_int = Type::Basic(BasicType::Int);
-    let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
-    let arity_2_intrinsics = vec![
-        ("eq", (t_a.clone(), t_a.clone(), t_bool.clone())),
-        ("add", (t_int.clone(), t_int.clone(), t_int.clone())),
-        ("sub", (t_int.clone(), t_int.clone(), t_int.clone())),
-        ("mul", (t_int.clone(), t_int.clone(), t_int.clone())),
-        ("div", (t_int.clone(), t_int.clone(), t_int.clone())),
-        ("mod", (t_int.clone(), t_int.clone(), t_int.clone())),
-        ("and", (t_bool.clone(), t_bool.clone(), t_bool.clone())),
-        ("or", (t_bool.clone(), t_bool.clone(), t_bool.clone())),
-    ];
-
-    for (name, (r, out)) in arity_1_intrinsics.into_iter() {
-        let t = Type::Func(Box::new(FunctionType {
-            arg: r,
-            return_: out,
-        }));
-        ctx.insert(
-            sym(format!("intrinsic_{}", name)),
-            TypeScheme {
-                variables: t.vars(),
-                type_: t,
-            },
-        );
-    }
-    for (name, (l, r, out)) in arity_2_intrinsics.into_iter() {
-        let t = Type::Func(Box::new(FunctionType {
-            arg: Type::Tuple(TupleType(vec![l, r])),
-            return_: out,
-        }));
-        ctx.insert(
-            sym(format!("intrinsic_{}", name)),
-            TypeScheme {
-                variables: t.vars(),
-                type_: t,
-            },
-        );
-    }
-    ctx
+pub struct SymbolTypeContext {
+    global_symbol_type_map: HashMap<Symbol, TypeScheme>,
+    global_constructor_type_map: HashMap<CustomType, TypeScheme>,
 }
 
-pub fn infer(expr: &Expr) -> Type {
-    todo!()
+impl SymbolTypeContext {
+    pub fn new() -> SymbolTypeContext {
+        SymbolTypeContext {
+            global_symbol_type_map: HashMap::new(),
+            global_constructor_type_map: HashMap::new(),
+        }
+    }
+
+    pub fn add_prelude(&mut self, gen: &mut VariableTypeGenerator) {
+        let t_a = Type::Var(gen.next());
+        let t_bool = Type::Basic(BasicType::Bool);
+        let t_int = Type::Basic(BasicType::Int);
+        let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
+        let arity_2_intrinsics = vec![
+            ("eq", (t_a.clone(), t_a.clone(), t_bool.clone())),
+            ("add", (t_int.clone(), t_int.clone(), t_int.clone())),
+            ("sub", (t_int.clone(), t_int.clone(), t_int.clone())),
+            ("mul", (t_int.clone(), t_int.clone(), t_int.clone())),
+            ("div", (t_int.clone(), t_int.clone(), t_int.clone())),
+            ("mod", (t_int.clone(), t_int.clone(), t_int.clone())),
+            ("and", (t_bool.clone(), t_bool.clone(), t_bool.clone())),
+            ("or", (t_bool.clone(), t_bool.clone(), t_bool.clone())),
+        ];
+        for (name, (r, out)) in arity_1_intrinsics.into_iter() {
+            let t = Type::Func(Box::new(FunctionType {
+                arg: r,
+                return_: out,
+            }));
+            self.global_symbol_type_map.insert(
+                sym(format!("intrinsic_{}", name)),
+                TypeScheme {
+                    variables: t.vars(),
+                    type_: t,
+                },
+            );
+        }
+        for (name, (l, r, out)) in arity_2_intrinsics.into_iter() {
+            let t = Type::Func(Box::new(FunctionType {
+                arg: Type::Tuple(TupleType(vec![l, r])),
+                return_: out,
+            }));
+            self.global_symbol_type_map.insert(
+                sym(format!("intrinsic_{}", name)),
+                TypeScheme {
+                    variables: t.vars(),
+                    type_: t,
+                },
+            );
+        }
+    }
+    pub fn add_global_symbol(&mut self, sy: Symbol, sch: TypeScheme) {
+        self.global_symbol_type_map.insert(sy, sch);
+    }
+
+    pub fn infer(&self, gen: &mut VariableTypeGenerator, expr: &Expr) -> Result<Type, Error> {
+        let mut subber = Substitution::new();
+        let mut scope_bindings = Vec::new();
+        let type_ = self.infer_expr(gen, &mut scope_bindings, &mut subber, expr)?;
+        Ok(subber.apply(type_))
+    }
+    fn infer_expr(
+        &self,
+        gen: &mut VariableTypeGenerator,
+        scope_bindings: &mut Vec<(Symbol, Type)>,
+        subst: &mut Substitution,
+        expr: &Expr,
+    ) -> Result<Type, Error> {
+        match expr {
+            Expr::Literal(Literal::Bool(_)) => Ok(Type::Basic(BasicType::Bool)),
+            Expr::Literal(Literal::Int(_)) => Ok(Type::Basic(BasicType::Int)),
+            Expr::Symbol(x) => match self.global_symbol_type_map.get(x) {
+                Some(x) => Ok(x.instantiate(gen)),
+                None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
+                    Some((_, x)) => Ok(x.clone()),
+                    None => panic!("???: {}", x),
+                },
+            },
+            Expr::Function(x) => {
+                let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, &x.bind);
+                let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);
+                Self::remove_n_bindings(scope_bindings, arg_n);
+                Ok(Type::Func(Box::new(FunctionType {
+                    arg: subst.apply(arg_t),
+                    return_: return_t?,
+                })))
+            }
+            Expr::Appl(x) => {
+                let return_t = Type::Var(gen.next());
+                let func = self.infer_expr(gen, scope_bindings, subst, &x.func)?;
+                let arg = self.infer_expr(gen, scope_bindings, subst, &x.arg)?;
+                subst.unify(
+                    subst.apply(func),
+                    Type::Func(Box::new(FunctionType {
+                        arg,
+                        return_: return_t.clone(),
+                    })),
+                )?;
+                Ok(subst.apply(return_t))
+            }
+            Expr::IfElse(x) => {
+                let expr = self.infer_expr(gen, scope_bindings, subst, &x.expr)?;
+                subst.unify(expr, Type::Basic(BasicType::Bool))?;
+                let case_true = self.infer_expr(gen, scope_bindings, subst, &x.case_true)?;
+                let case_false = self.infer_expr(gen, scope_bindings, subst, &x.case_false)?;
+                subst.unify(case_true.clone(), case_false)?;
+                Ok(subst.apply(case_true))
+            }
+            Expr::Match(x) => {
+                let expr_t = self.infer_expr(gen, scope_bindings, subst, &x.expr)?;
+                let return_ = Type::Var(gen.next());
+
+                for case in &x.cases {
+                    let (pattern_t, n) = self.infer_pattern(gen, scope_bindings, &case.pattern);
+                    if let Err(e) = subst.unify(pattern_t, expr_t.clone()) {
+                        Self::remove_n_bindings(scope_bindings, n);
+                        return Err(e);
+                    };
+                    let expr_t = self.infer_expr(gen, scope_bindings, subst, &case.expr);
+                    Self::remove_n_bindings(scope_bindings, n);
+                    subst.unify(return_.clone(), subst.apply(expr_t?))?;
+                }
+                Ok(subst.apply(return_))
+            }
+            Expr::Let(x) => {
+                let (bind_t, bind_n) = self.infer_pattern(gen, scope_bindings, &x.bind);
+                let bind_expr_t = match self.infer_expr(gen, scope_bindings, subst, &x.bind_expr) {
+                    Ok(x) => x,
+                    e => {
+                        Self::remove_n_bindings(scope_bindings, bind_n);
+                        return e;
+                    }
+                };
+                if let Err(e) = subst.unify(bind_t, bind_expr_t) {
+                    Self::remove_n_bindings(scope_bindings, bind_n);
+                    return Err(e);
+                };
+                let next_expr_t = self.infer_expr(gen, scope_bindings, subst, &x.next_expr);
+                Self::remove_n_bindings(scope_bindings, bind_n);
+                next_expr_t
+            }
+            Expr::Tuple(x) => {
+                let mut ts: Vec<Type> = Vec::with_capacity(x.exprs.len());
+                for e in &x.exprs {
+                    ts.push(self.infer_expr(gen, scope_bindings, subst, e)?);
+                }
+                Ok(subst.apply(Type::Tuple(TupleType(ts))))
+            }
+        }
+    }
+    fn infer_pattern(
+        &self,
+        gen: &mut VariableTypeGenerator,
+        scope_bindings: &mut Vec<(Symbol, Type)>,
+        pat: &Pattern,
+    ) -> (Type, usize) {
+        match pat {
+            Pattern::Symbol(x) => {
+                let t = Type::Var(gen.next());
+                scope_bindings.push((x.clone(), t.clone()));
+                (t, 1)
+            }
+            Pattern::Tuple(x) => {
+                let mut n = 0;
+                let mut ts = Vec::<Type>::new();
+                for (t, tn) in
+                    x.0.iter()
+                        .map(|x| self.infer_pattern(gen, scope_bindings, x))
+                {
+                    ts.push(t);
+                    n += tn;
+                }
+                (Type::Tuple(TupleType(ts)), n)
+            }
+            // pub struct VariantPattern {
+            //     pub constr: CustomType,
+            //     pub pattern: Option<Box<Pattern>>,
+            // }
+            Pattern::Variant(x) => {
+                let constr = Symbol(x.constr.0.clone());
+                let t = match self.global_symbol_type_map.get(&constr) {
+                    None => todo!("this'll have to be an error"),
+                    Some(x) => x,
+                };
+                (t.instantiate(gen), 0)
+            }
+        }
+    }
+    fn remove_n_bindings(scope_bindings: &mut Vec<(Symbol, Type)>, n: usize) {
+        scope_bindings.truncate(scope_bindings.len() - n);
+    }
 }
 
 #[derive(Debug)]
@@ -66,23 +212,52 @@ struct Substitution {
     subs: HashMap<VariableType, Type>,
 }
 
+impl fmt::Display for Substitution {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{ ")?;
+        for (k, v) in &self.subs {
+            write!(f, "{} => {}, ", k, v)?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
 impl Substitution {
+    fn new() -> Self {
+        Self {
+            subs: HashMap::new(),
+        }
+    }
+
     fn insert(&mut self, var: VariableType, ty: Type) {
+        let keys_to_update: Vec<_> = self
+            .subs
+            .iter()
+            .filter(|(_, val)| *val == &Type::Var(var))
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in keys_to_update.into_iter() {
+            self.subs.insert(key, ty.clone());
+        }
         self.subs.insert(var, ty);
     }
 
-    fn apply(&self, ty: &Type) -> Type {
+    fn apply(&self, ty: Type) -> Type {
         match ty {
-            Type::Var(v) => match self.subs.get(v).cloned() {
+            Type::Var(v) => match self.subs.get(&v).cloned() {
                 Some(v) => v,
-                None => Type::Var(*v),
+                None => Type::Var(v),
             },
             Type::Func(t) => Type::Func(Box::new(FunctionType {
-                arg: self.apply(&t.arg),
-                return_: self.apply(&t.return_),
+                arg: self.apply(t.arg),
+                return_: self.apply(t.return_),
             })),
-            Type::Tuple(t) => Type::Tuple(TupleType(t.0.iter().map(|t| self.apply(t)).collect())),
-            Type::Basic(t) => Type::Basic(*t),
+            Type::Tuple(t) => {
+                Type::Tuple(TupleType(t.0.into_iter().map(|t| self.apply(t)).collect()))
+            }
+            Type::Basic(t) => Type::Basic(t),
+            Type::Custom(t) => Type::Custom(t),
         }
     }
     fn apply_scheme(&self, ty: &TypeScheme) -> TypeScheme {
@@ -97,23 +272,31 @@ impl Substitution {
         };
         TypeScheme {
             variables: ty.variables.clone(),
-            type_: next.apply(&ty.type_),
+            type_: next.apply(ty.type_.clone()),
         }
     }
     fn apply_context(&self, ctx: &SymbolTypeContext) -> SymbolTypeContext {
-        ctx.iter()
-            .map(|(s, t_sch)| (s.clone(), self.apply_scheme(t_sch)))
-            .collect()
+        SymbolTypeContext {
+            global_symbol_type_map: ctx
+                .global_symbol_type_map
+                .iter()
+                .map(|(s, t_sch)| (s.clone(), self.apply_scheme(t_sch)))
+                .collect(),
+            global_constructor_type_map: ctx.global_constructor_type_map.clone(),
+        }
     }
 
     fn bind_symbol(&mut self, v: VariableType, t: Type) {
         if t.vars().contains(&v) {
             panic!("AAaaaaaaa");
         }
-        self.subs.insert(v, t);
+        self.insert(v, t);
     }
 
     fn unify(&mut self, t1: Type, t2: Type) -> Result<(), Error> {
+        if t1 == t2 {
+            return Ok(());
+        }
         match (t1, t2) {
             (Type::Var(t1), t2) => {
                 self.bind_symbol(t1, t2);
@@ -133,7 +316,7 @@ impl Substitution {
                     Err(Error::TupleArityMismatch)
                 } else {
                     for (t1, t2) in t1.0.iter().zip(t2.0.iter()) {
-                        self.unify(t1.clone(), t2.clone())?;
+                        self.unify(self.apply(t1.clone()), self.apply(t2.clone()))?;
                     }
                     Ok(())
                 }

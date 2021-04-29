@@ -9,8 +9,20 @@ mod parser;
 pub mod prelude;
 mod type_recon;
 use crate::prelude::{sym, Symbol};
+use ast::Statement;
 use interpreter as inter;
 use std::collections::HashMap;
+use type_recon as trc;
+
+static PRELUDE: &'static str = "
+let eq l = \\r -> intrinsic_eq (l, r)
+let add l = \\r -> intrinsic_add (l, r)
+let sub l = \\r -> intrinsic_sub (l, r)
+let mul l = \\r -> intrinsic_mul (l, r)
+let not = intrinsic_not
+let and l = \\r -> intrinsic_and (l, r)
+let or l = \\r -> intrinsic_or (l, r)
+";
 
 fn main() {
     let module: ast::Module = {
@@ -26,39 +38,44 @@ rec fact n =
         mul n (fact (sub n 1))
 
 let main = (fact 6, f Fa)
-    ";
-        parser::parse_module(src).unwrap()
+";
+        parser::parse_module(&format!("{}\n{}", PRELUDE, src)).unwrap()
     };
     println!("{}\n\n", ast::print_module(&module));
-    let global_ctx = {
-        use inter::Value;
-        let mut bindings: HashMap<Symbol, inter::Value> = HashMap::new();
-        let globals = "
-eq = \\l -> \\r -> intrinsic_eq (l, r)
-add = \\l -> \\r -> intrinsic_add (l, r)
-sub = \\l -> \\r -> intrinsic_sub (l, r)
-mul = \\l -> \\r -> intrinsic_mul (l, r)
-not = intrinsic_not
-and = \\l -> \\r -> intrinsic_and (l, r)
-or = \\l -> \\r -> intrinsic_or (l, r)
-        "
-        .trim();
-        for x in globals.split("\n") {
-            let kvp: Vec<&str> = x.split(" = ").collect();
-            let key = sym(*kvp.get(0).unwrap());
-            let val: ast::Expr = parser::parse(kvp.get(1).unwrap()).unwrap();
-            let val: Value = match val {
-                ast::Expr::Function(x) => Value::Function {
-                    func: x,
-                    context: inter::ExecutionContext::new_empty(),
-                },
-                ast::Expr::Symbol(x) if x.0.starts_with("intrinsic_") => Value::Intrinsic(x),
-                _ => unreachable!("expected function"),
-            };
-            bindings.insert(key, val);
+    let global_ctx = inter::ExecutionContext::new_empty();
+    {
+        use trc::Error as TCError;
+        let mut gen = ast::VariableTypeGenerator::new();
+        let mut ctx = trc::SymbolTypeContext::new();
+        ctx.add_prelude(&mut gen);
+        for st in &module.statements {
+            match st {
+                Statement::Let(st) => {
+                    if st.recursive {
+                        ctx.add_global_symbol(st.bind.clone(), gen.next_scheme());
+                    }
+                    match ctx.infer(&mut gen, &st.expr) {
+                        Ok(t) => {
+                            let t = t.generalize(&mut gen);
+                            ctx.add_global_symbol(st.bind.clone(), t.clone());
+                            println!("{}: {}", st.bind, t);
+                        }
+                        Err(TCError::TupleArityMismatch) => println!("{}: arity mismatch", st.bind),
+                        Err(TCError::TypeMismatch((t1, t2))) => {
+                            println!("{}: type mismatch between {} and {}", st.bind, t1, t2)
+                        }
+                    }
+                }
+                Statement::Type(t) => {
+                    use ast::Type;
+                    let ty = Type::Custom(t.name.clone());
+                    for v in &t.variants {
+                        ctx.add_global_symbol(v.constr.clone(), ty.clone().generalize(&mut gen));
+                    }
+                }
+            }
         }
-        inter::ExecutionContext::new_global_ctx(bindings)
-    };
+    }
     let mut interp = inter::Interpreter::new(global_ctx);
     match interp.eval_module(&module) {
         Err(e) => {

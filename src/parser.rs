@@ -52,8 +52,8 @@ fn parse_literal_expr(s: &str) -> IResult<&str, Expr> {
     p(s)
 }
 
-const RESERVED_SYMBOLS: [&'static str; 9] = [
-    "let", "rec", "in", "if", "then", "else", "fn", "match", "with",
+const RESERVED_SYMBOLS: [&'static str; 10] = [
+    "let", "rec", "in", "if", "then", "else", "fn", "match", "with", "type",
 ];
 
 fn is_not_reserved(s: &str) -> bool {
@@ -103,7 +103,7 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
 fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
     let mut p = map(parse_custom_type, |t| {
         Pattern::Variant(VariantPattern {
-            constr: t,
+            constr: Symbol(t.0),
             pattern: None,
         })
     });
@@ -392,14 +392,14 @@ fn parse_custom_type(s: &str) -> IResult<&str, CustomType> {
 }
 fn parse_variant_definition(s: &str) -> IResult<&str, VariantDefinition> {
     let mut p = map(parse_custom_type, |t| VariantDefinition {
-        constr: t,
+        constr: Symbol(t.0),
         expr: None,
     });
     p(s)
 }
 fn parse_variant(s: &str) -> IResult<&str, Variant> {
     let mut p = map(parse_custom_type, |t| Variant {
-        constr: t,
+        constr: Symbol(t.0),
         value: None,
     });
     p(s)

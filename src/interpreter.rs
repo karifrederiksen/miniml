@@ -7,6 +7,10 @@ use std::collections::*;
 use std::fmt;
 use std::rc::Rc;
 
+// here's some inspiration
+//   https://betterprogramming.pub/execution-context-lexical-environment-and-closures-in-javascript-b57c979341a5
+//   https://medium.com/@5066aman/lexical-environment-the-hidden-part-to-understand-closures-71d60efac0e0
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Literal(Literal),
@@ -15,7 +19,7 @@ pub enum Value {
         func: ast::Function,
         context: ExecutionContext,
     },
-    Variant((CustomType, Option<Box<Value>>)),
+    Variant((Symbol, Option<Box<Value>>)),
     Intrinsic(Symbol),
 }
 

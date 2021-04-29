@@ -1,3 +1,12 @@
+TODO
+
+Custom type should be able to contain other types for example `List a` or `List Int` kinda thing
+
+the current CustomType should probably be called CustomTypeSymbol
+
+===============
+
+
 records = tuples with fields in a total order (perhaps alphabetic by name)
 
 # ideas to explore

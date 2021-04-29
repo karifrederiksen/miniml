@@ -42,7 +42,7 @@ impl fmt::Display for TuplePattern {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantDefinition {
-    pub constr: CustomType,
+    pub constr: Symbol,
     pub expr: Option<Type>,
 }
 impl fmt::Display for VariantDefinition {
@@ -53,7 +53,7 @@ impl fmt::Display for VariantDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variant {
-    pub constr: CustomType,
+    pub constr: Symbol,
     pub value: Option<Expr>,
 }
 impl fmt::Display for Variant {
@@ -95,7 +95,7 @@ impl fmt::Display for CustomTypeDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantPattern {
-    pub constr: CustomType,
+    pub constr: Symbol,
     pub pattern: Option<Box<Pattern>>,
 }
 
@@ -360,10 +360,22 @@ pub struct VariableTypeGenerator {
     next: u32,
 }
 impl VariableTypeGenerator {
+    pub fn new() -> Self {
+        Self { next: 1 }
+    }
     pub fn next(&mut self) -> VariableType {
         let id = self.next;
         self.next += 1;
         VariableType(id)
+    }
+    pub fn next_scheme(&mut self) -> TypeScheme {
+        let t = self.next();
+        let mut variables = HashSet::new();
+        variables.insert(t);
+        TypeScheme {
+            variables,
+            type_: Type::Var(t),
+        }
     }
 }
 
@@ -389,6 +401,7 @@ pub enum Type {
     Func(Box<FunctionType>),
     Var(VariableType),
     Tuple(TupleType),
+    Custom(CustomType),
 }
 
 impl fmt::Display for Type {
@@ -398,6 +411,7 @@ impl fmt::Display for Type {
             Self::Func(x) => write!(f, "{}", x),
             Self::Var(x) => write!(f, "{}", x),
             Self::Tuple(x) => write!(f, "{}", x),
+            Self::Custom(x) => write!(f, "{}", x),
         }
     }
 }
@@ -418,6 +432,7 @@ impl Type {
                 x.return_.add_vars(vars);
             }
             Self::Basic(_) => {}
+            Self::Custom(_) => {}
         }
     }
     pub fn vars(&self) -> HashSet<VariableType> {
@@ -442,6 +457,7 @@ impl Type {
                 x.return_.replace(replacement);
             }
             Self::Basic(_) => {}
+            Self::Custom(_) => {}
         }
     }
 
@@ -470,11 +486,14 @@ pub struct TypeScheme {
 
 impl fmt::Display for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "forall ")?;
-        for v in &self.variables {
-            write!(f, "{} ", v);
+        if !self.variables.is_empty() {
+            write!(f, "forall ")?;
+            for v in &self.variables {
+                write!(f, "{} ", v)?;
+            }
+            write!(f, "=> ")?;
         }
-        write!(f, "=> {}", self.type_)
+        write!(f, "{}", self.type_)
     }
 }
 impl TypeScheme {
