@@ -1,4 +1,4 @@
-use crate::prelude::{sym, Symbol};
+use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -43,27 +43,28 @@ impl fmt::Display for TuplePattern {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantDefinition {
     pub constr: Symbol,
-    pub expr: Type,
+    pub contained_type: Option<Type>,
 }
 impl fmt::Display for VariantDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.constr)
+        write!(f, "{}", self.constr)?;
+        if let Some(contained_type) = &self.contained_type {
+            write!(f, " {}", contained_type)?;
+        }
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variant {
     pub constr: Symbol,
-    pub value: Expr,
+    pub value: Option<Expr>,
 }
 impl fmt::Display for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.constr)?;
-        match &self.value {
-            Expr::Tuple(Tuple(exprs)) if exprs.len() == 0 => {}
-            v => {
-                write!(f, " {}", v)?;
-            }
+        if let Some(val) = &self.value {
+            write!(f, " {}", val)?;
         }
         Ok(())
     }
@@ -333,23 +334,12 @@ impl fmt::Display for FunctionType {
     }
 }
 
-fn u32_to_ascii(n: u32) -> String {
-    let mut s = String::new();
-    let mut n = n;
-    while n > 0 {
-        let c = (96 + (n % 26)) as u8;
-        s.push(c as char);
-        n = n / 26;
-    }
-    s
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct VariableType(pub u32);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct VariableType(pub String);
 
 impl fmt::Display for VariableType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", u32_to_ascii(self.0))
+        write!(f, "{}", self.0)
     }
 }
 
@@ -364,12 +354,12 @@ impl VariableTypeGenerator {
     pub fn next(&mut self) -> VariableType {
         let id = self.next;
         self.next += 1;
-        VariableType(id)
+        VariableType(format!("'{}", u32_to_ascii(id)))
     }
     pub fn next_scheme(&mut self) -> TypeScheme {
         let t = self.next();
         let mut variables = HashSet::new();
-        variables.insert(t);
+        variables.insert(t.clone());
         TypeScheme {
             variables,
             type_: Type::Var(t),
@@ -482,7 +472,7 @@ impl Type {
         let replacements: HashMap<VariableType, Type> = vars
             .into_iter()
             .zip(next_vars.iter())
-            .map(|(from, to)| (from, Type::Var(*to)))
+            .map(|(from, to)| (from, Type::Var(to.clone())))
             .collect();
         let mut t = self;
         t.replace(&replacements);

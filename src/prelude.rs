@@ -18,3 +18,14 @@ impl Symbol {
 pub fn sym<S: Into<String>>(x: S) -> Symbol {
     Symbol(x.into())
 }
+
+pub fn u32_to_ascii(n: u32) -> String {
+    let mut s = String::new();
+    let mut n = n;
+    while n > 0 {
+        let c = (96 + (n % 26)) as u8;
+        s.push(c as char);
+        n = n / 26;
+    }
+    s
+}

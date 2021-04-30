@@ -122,13 +122,15 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
 }
 
 fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
-    let mut p = map(parse_camelcase_symbol, |t| {
-        Pattern::Variant(VariantPattern {
-            constr: t,
-            pattern: None,
-        })
-    });
-    p(s)
+    let mut p = seq::tuple((
+        parse_camelcase_symbol,
+        branch::alt((
+            seq::preceded(space_lf1, map(parse_pattern, |x| Some(Box::new(x)))),
+            success(None),
+        )),
+    ));
+    let (s, (constr, pattern)) = p(s)?;
+    Ok((s, Pattern::Variant(VariantPattern { constr, pattern })))
 }
 fn parse_pattern(s: &str) -> IResult<&str, Pattern> {
     let mut p = branch::alt((
@@ -167,7 +169,7 @@ fn parse_multiline_comment(s: &str) -> IResult<&str, &str> {
     )));
     p(s)
 }
-fn parse_if_else_expr(s: &str) -> IResult<&str, Expr> {
+fn parse_if_else_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let mut p = context(
         "IfElse",
         seq::tuple((
@@ -194,7 +196,7 @@ fn parse_if_else_expr(s: &str) -> IResult<&str, Expr> {
         }),
     ))
 }
-fn parse_func_expr(s: &str) -> IResult<&str, Expr> {
+fn parse_func_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let mut p = context(
         "Func",
         seq::tuple((
@@ -216,7 +218,7 @@ fn parse_func_expr(s: &str) -> IResult<&str, Expr> {
         }),
     ))
 }
-fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
+fn parse_let_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let mut p = context(
         "LetExpr",
         seq::tuple((
@@ -254,7 +256,7 @@ fn parse_let_expr(s: &str) -> IResult<&str, Expr> {
     ))
 }
 
-fn parse_tuple_expr(s: &str) -> IResult<&str, Expr> {
+fn parse_tuple_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let sep_p = seq::tuple((space_lf0, tag(","), space_lf0));
     let mut p = context(
         "Tuple",
@@ -282,7 +284,7 @@ fn parse_tuple_expr(s: &str) -> IResult<&str, Expr> {
 //     pub expr: Box<Expr>,
 // }
 
-fn parse_match_expr(s: &str) -> IResult<&str, Expr> {
+fn parse_match_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let case_p = map(
         seq::tuple((
             parse_pattern,
@@ -314,7 +316,7 @@ fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
     let mut p = map(parse_camelcase_symbol, |x| Expr::Symbol(x));
     p(s)
 }
-fn parse_expr(s: &str) -> IResult<&str, Expr> {
+fn parse_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let mut p = context(
         "Expr",
         branch::alt((
@@ -365,7 +367,7 @@ pub fn parse(s: &str) -> Result<Expr, String> {
     }
 }
 
-fn parse_let_statement(s: &str) -> IResult<&str, Statement> {
+fn parse_let_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
     let mut p = context(
         "LetStatement",
         seq::tuple((
@@ -395,30 +397,48 @@ fn parse_let_statement(s: &str) -> IResult<&str, Statement> {
     Ok((s, Statement::Let(stmt)))
 }
 
-fn parse_custom_type(s: &str) -> IResult<&str, CustomType> {
+fn parse_custom_type<'a>(s: &'a str) -> IResult<&'a str, CustomType> {
     use std::iter::FromIterator;
-    let mut p = map(parse_camelcase_symbol, |s| CustomType {
-        name: CustomTypeSymbol(s.0),
-        variables: Vec::new(),
-    });
-    p(s)
+    let mut p = seq::tuple((
+        map(parse_camelcase_symbol, |s| CustomTypeSymbol(s.0)),
+        branch::alt((
+            seq::preceded(space_lf1, multi::separated_list1(space_lf1, parse_type)),
+            success(Vec::new()),
+        )),
+    ));
+    let (s, (name, variables)) = p(s)?;
+    Ok((s, CustomType { name, variables }))
 }
-fn parse_variant_definition(s: &str) -> IResult<&str, VariantDefinition> {
-    let mut p = map(parse_camelcase_symbol, |t| VariantDefinition {
-        constr: t,
-        expr: Type::Tuple(TupleType(Vec::new())),
-    });
-    p(s)
+fn parse_variant_definition<'a>(s: &'a str) -> IResult<&'a str, VariantDefinition> {
+    let mut p = seq::tuple((
+        parse_camelcase_symbol,
+        branch::alt((
+            seq::preceded(space_lf1, map(parse_type, Some)),
+            success(None),
+        )),
+    ));
+    let (s, (constr, contained_type)) = p(s)?;
+    Ok((
+        s,
+        VariantDefinition {
+            constr,
+            contained_type,
+        },
+    ))
 }
-fn parse_variant(s: &str) -> IResult<&str, Variant> {
-    let mut p = map(parse_camelcase_symbol, |t| Variant {
-        constr: t,
-        value: Expr::Tuple(Tuple(Vec::new())),
-    });
-    p(s)
+fn parse_variant<'a>(s: &'a str) -> IResult<&'a str, Variant> {
+    let mut p = seq::tuple((
+        parse_camelcase_symbol,
+        branch::alt((
+            seq::preceded(space_lf1, map(parse_expr, Some)),
+            success(None),
+        )),
+    ));
+    let (s, (constr, value)) = p(s)?;
+    Ok((s, Variant { constr, value }))
 }
 
-fn parse_custom_type_statement(s: &str) -> IResult<&str, Statement> {
+fn parse_custom_type_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
     let mut p = seq::tuple((
         seq::tuple((tag("type"), space_lf1)),
         parse_custom_type,
@@ -449,4 +469,59 @@ pub fn parse_module(s: &str) -> Result<Module, String> {
         Ok((_, e)) => Ok(e),
         Err(e) => Err(format!("{}", e)),
     }
+}
+
+fn parse_intrinsic_type(s: &str) -> IResult<&str, Type> {
+    let mut p = branch::alt((
+        map(tag("Bool"), |_| Type::Intrinsic(IntrinsicType::Bool)),
+        map(tag("Int"), |_| Type::Intrinsic(IntrinsicType::Int)),
+    ));
+    p(s)
+}
+
+fn parse_func_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
+    let mut p = map(
+        seq::tuple((
+            parse_type,
+            seq::tuple((space_lf0, tag("->"), space_lf0)),
+            parse_type,
+        )),
+        |(arg, _, return_)| Type::Func(Box::new(FunctionType { arg, return_ })),
+    );
+
+    p(s)
+}
+
+fn parse_var_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
+    let mut p = map(parse_lowercase_symbol, |s| Type::Var(VariableType(s.0)));
+    p(s)
+}
+
+fn parse_tuple_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
+    let mut p = map(
+        seq::tuple((
+            seq::pair(tag("("), space_lf0),
+            multi::separated_list0(seq::tuple((space_lf0, tag(","), space_lf0)), parse_type),
+            seq::pair(space_lf0, tag(")")),
+        )),
+        |(_, x, _)| Type::Tuple(TupleType(x)),
+    );
+    p(s)
+}
+
+fn parse_custom_type_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
+    let mut p = map(parse_custom_type, Type::Custom);
+    p(s)
+}
+
+fn parse_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
+    let mut p = branch::alt((
+        parse_intrinsic_type,
+        parse_var_type,
+        parse_tuple_type,
+        parse_custom_type_type,
+    ));
+    // todo: handle function types.
+    //       they need to be handled similarly to function applications to avoid stack overflow
+    p(s)
 }

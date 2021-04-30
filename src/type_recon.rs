@@ -12,14 +12,12 @@ pub enum Error {
 
 pub struct SymbolTypeContext {
     global_symbol_type_map: HashMap<Symbol, TypeScheme>,
-    global_constructor_type_map: HashMap<CustomTypeSymbol, TypeScheme>,
 }
 
 impl SymbolTypeContext {
     pub fn new() -> SymbolTypeContext {
         SymbolTypeContext {
             global_symbol_type_map: HashMap::new(),
-            global_constructor_type_map: HashMap::new(),
         }
     }
 
@@ -188,10 +186,6 @@ impl SymbolTypeContext {
                 }
                 (Type::Tuple(TupleType(ts)), n)
             }
-            // pub struct VariantPattern {
-            //     pub constr: CustomType,
-            //     pub pattern: Option<Box<Pattern>>,
-            // }
             Pattern::Variant(x) => {
                 let constr = Symbol(x.constr.0.clone());
                 let t = match self.global_symbol_type_map.get(&constr) {
@@ -231,10 +225,11 @@ impl Substitution {
     }
 
     fn insert(&mut self, var: VariableType, ty: Type) {
+        let var_t = Type::Var(var.clone());
         let keys_to_update: Vec<_> = self
             .subs
             .iter()
-            .filter(|(_, val)| *val == &Type::Var(var))
+            .filter(|(_, val)| *val == &var_t)
             .map(|(key, _)| key.clone())
             .collect();
         for key in keys_to_update.into_iter() {
@@ -282,7 +277,6 @@ impl Substitution {
                 .iter()
                 .map(|(s, t_sch)| (s.clone(), self.apply_scheme(t_sch)))
                 .collect(),
-            global_constructor_type_map: ctx.global_constructor_type_map.clone(),
         }
     }
 

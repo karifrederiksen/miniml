@@ -25,11 +25,14 @@ let or l = \\r -> intrinsic_or (l, r)
 ";
 
 fn main() {
+    let mut gen = ast::VariableTypeGenerator::new();
     let module: ast::Module = {
         let src: &str = "
-type Boolean = Tr | Fa
+type Option a = Some a | None
 
-let f x = match x with Tr -> 1, Fa -> 0
+let map f = \\x -> match x with
+    Some x -> Some (f x),
+    None -> None
 
 rec fact n =
     if eq n 0 then
@@ -37,7 +40,13 @@ rec fact n =
     else
         mul n (fact (sub n 1))
 
-let main = (fact 6, f Fa)
+let x = Some 1
+
+let incr = add 1
+
+let incr_opt = map incr
+
+let main = (fact 6, incr_opt x)
 ";
         parser::parse_module(&format!("{}\n{}", PRELUDE, src)).unwrap()
     };
@@ -45,7 +54,6 @@ let main = (fact 6, f Fa)
     let global_ctx = inter::ExecutionContext::new_empty();
     {
         use trc::Error as TCError;
-        let mut gen = ast::VariableTypeGenerator::new();
         let mut ctx = trc::SymbolTypeContext::new();
         ctx.add_prelude(&mut gen);
         for st in &module.statements {
@@ -67,11 +75,21 @@ let main = (fact 6, f Fa)
                     }
                 }
                 Statement::Type(t) => {
-                    use ast::{CustomType, Type};
+                    use ast::{CustomType, FunctionType, Type, TypeScheme};
                     let ty = Type::Custom(t.type_.clone()).generalize(&mut gen);
                     for v in &t.variants {
+                        let ty = match &v.contained_type {
+                            None => ty.clone(),
+                            Some(contained_type) => TypeScheme {
+                                type_: Type::Func(Box::new(FunctionType {
+                                    arg: contained_type.clone(),
+                                    return_: ty.type_.clone(),
+                                })),
+                                variables: ty.variables.clone(),
+                            },
+                        };
                         println!("{}: {}", v.constr, ty);
-                        ctx.add_global_symbol(v.constr.clone(), ty.clone());
+                        ctx.add_global_symbol(v.constr.clone(), ty);
                     }
                 }
             }

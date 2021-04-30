@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::prelude::Symbol;
+use crate::prelude::*;
 use ast::*;
 use rpds::HashTrieMap;
 use std::borrow::Borrow;
@@ -238,8 +238,8 @@ impl Interpreter {
             )),
             _ => Err(InterpError::TypeMismatch((
                 Type::Tuple(TupleType(vec![
-                    Type::Var(VariableType(0)),
-                    Type::Var(VariableType(1)),
+                    Type::Var(VariableType("?a".to_owned())),
+                    Type::Var(VariableType("?b".to_owned())),
                 ])),
                 x.clone(),
             ))),
@@ -432,10 +432,21 @@ impl Interpreter {
             }
             Statement::Type(t) => {
                 for v in &t.variants {
-                    self.current_ctx_mut().bind(
-                        &Pattern::Symbol(Symbol(v.constr.0.clone())),
-                        Value::Variant((v.constr.clone(), None)),
-                    )?;
+                    let value = match &v.contained_type {
+                        None => Value::Variant((v.constr.clone(), None)),
+                        Some(_) => Value::Function {
+                            func: Function {
+                                bind: Pattern::Symbol(sym("a")),
+                                expr: Box::new(Expr::Appl(Appl {
+                                    func: Box::new(Expr::Symbol(v.constr.clone())),
+                                    arg: Box::new(Expr::Symbol(sym("a"))),
+                                })),
+                            },
+                            context: self.current_ctx().clone(),
+                        },
+                    };
+                    self.current_ctx_mut()
+                        .bind(&Pattern::Symbol(Symbol(v.constr.0.clone())), value)?;
                 }
             }
         }
