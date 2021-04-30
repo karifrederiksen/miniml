@@ -89,7 +89,8 @@ impl fmt::Display for ExecutionContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let stack = self.stack();
         for &name in stack.iter() {
-            writeln!(f, "  {}", name)?;
+            write!(f, "  {}: ", name)?;
+            writeln!(f)?;
         }
         Ok(())
     }
@@ -99,16 +100,7 @@ impl ExecutionContext {
         Self {
             bindings: HashMap::new(),
             recursives: Vec::new(),
-            name: Pattern::Symbol(Symbol("Empty_context".to_owned())),
-            height: 0,
-            previous: None,
-        }
-    }
-    pub fn new_global_ctx(bindings: HashMap<Symbol, Value>) -> Self {
-        Self {
-            bindings,
-            recursives: Vec::new(),
-            name: Pattern::Symbol(Symbol("Global_context".to_owned())),
+            name: Pattern::Symbol(Symbol("Global context".to_owned())),
             height: 0,
             previous: None,
         }
@@ -138,7 +130,7 @@ impl ExecutionContext {
         }
     }
 
-    pub fn bind(&mut self, pat: &Pattern, val: Value) -> Result<(), InterpError> {
+    pub fn bind(&mut self, pat: &Pattern, val: Value) -> Result<(), Error> {
         match (pat, val) {
             (Pattern::Symbol(s), val) => {
                 self.bindings.insert(s.clone(), val);
@@ -186,7 +178,13 @@ impl ExecutionContext {
 }
 
 #[derive(Debug, Clone)]
-pub enum InterpError {
+pub struct Error {
+    pub stack: Vec<Pattern>,
+    pub kind: ErrorKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum ErrorKind {
     TypeMismatch((Type, Value)),
     DepthLimitReached,
     UndefinedSymbol(Symbol),
@@ -208,7 +206,14 @@ impl Interpreter {
         }
     }
 
-    fn get(&mut self, sym: &Symbol) -> Result<Value, InterpError> {
+    fn error<A>(&self, kind: ErrorKind) -> Result<A, Error> {
+        Err(Error {
+            stack: self.current_ctx().stack().into_iter().cloned().collect(),
+            kind,
+        })
+    }
+
+    fn get(&mut self, sym: &Symbol) -> Result<Value, Error> {
         match self.current_ctx().find(sym) {
             Some(x) => Ok(x.clone()),
             None => match self
@@ -218,7 +223,7 @@ impl Interpreter {
                 .find(|x| x.0.contains(sym))
                 .cloned()
             {
-                None => Err(InterpError::UndefinedSymbol(sym.clone())),
+                None => self.error(ErrorKind::UndefinedSymbol(sym.clone())),
                 Some(x) => self.eval(&x.1),
             },
         }
@@ -230,13 +235,13 @@ impl Interpreter {
     }
 
     #[inline]
-    fn eval_tup2(x: &Value) -> Result<(Value, Value), InterpError> {
+    fn eval_tup2(x: &Value) -> Result<(Value, Value), ErrorKind> {
         match x {
             Value::Tuple(values) if values.len() == 2 => Ok((
                 values.get(0).unwrap().clone(),
                 values.get(1).unwrap().clone(),
             )),
-            _ => Err(InterpError::TypeMismatch((
+            _ => Err(ErrorKind::TypeMismatch((
                 Type::Tuple(TupleType(vec![
                     Type::Var(VariableType("?a".to_owned())),
                     Type::Var(VariableType("?b".to_owned())),
@@ -246,13 +251,13 @@ impl Interpreter {
         }
     }
     #[inline]
-    fn eval_intrinsic_int_int<F, O>(x: &Value, f: F) -> Result<O, InterpError>
+    fn eval_intrinsic_int_int<F, O>(x: &Value, f: F) -> Result<O, ErrorKind>
     where
         F: FnOnce(i128, i128) -> O,
     {
         match Self::eval_tup2(x)? {
             (Value::Literal(Literal::Int(l)), Value::Literal(Literal::Int(r))) => Ok(f(l, r)),
-            (l, r) => Err(InterpError::TypeMismatch((
+            (l, r) => Err(ErrorKind::TypeMismatch((
                 Type::Tuple(TupleType(vec![
                     Type::Intrinsic(IntrinsicType::Int),
                     Type::Intrinsic(IntrinsicType::Int),
@@ -262,13 +267,13 @@ impl Interpreter {
         }
     }
     #[inline]
-    fn eval_intrinsic_bool_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
+    fn eval_intrinsic_bool_bool<F, O>(x: &Value, f: F) -> Result<O, ErrorKind>
     where
         F: FnOnce(bool, bool) -> O,
     {
         match Self::eval_tup2(x)? {
             (Value::Literal(Literal::Bool(l)), Value::Literal(Literal::Bool(r))) => Ok(f(l, r)),
-            (l, r) => Err(InterpError::TypeMismatch((
+            (l, r) => Err(ErrorKind::TypeMismatch((
                 Type::Tuple(TupleType(vec![
                     Type::Intrinsic(IntrinsicType::Bool),
                     Type::Intrinsic(IntrinsicType::Bool),
@@ -278,13 +283,13 @@ impl Interpreter {
         }
     }
     #[inline]
-    fn eval_intrinsic_bool<F, O>(x: &Value, f: F) -> Result<O, InterpError>
+    fn eval_intrinsic_bool<F, O>(x: &Value, f: F) -> Result<O, ErrorKind>
     where
         F: FnOnce(bool) -> O,
     {
         match x {
             Value::Literal(Literal::Bool(x)) => Ok(f(*x)),
-            x => Err(InterpError::TypeMismatch((
+            x => Err(ErrorKind::TypeMismatch((
                 Type::Intrinsic(IntrinsicType::Bool),
                 x.clone(),
             ))),
@@ -292,7 +297,7 @@ impl Interpreter {
     }
 
     #[inline]
-    fn eval_intrinsic(sy: &Symbol, x: &Value) -> Result<Value, InterpError> {
+    fn eval_intrinsic(sy: &Symbol, x: &Value) -> Result<Value, ErrorKind> {
         match &sy.0[10..] {
             "eq" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
             "add" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l + r))),
@@ -304,7 +309,7 @@ impl Interpreter {
             }
             "or" => Self::eval_intrinsic_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l || r))),
             "not" => Self::eval_intrinsic_bool(x, |x| Value::Literal(Literal::Bool(!x))),
-            _ => Err(InterpError::UndefinedSymbol(sy.clone())),
+            _ => Err(ErrorKind::UndefinedSymbol(sy.clone())),
         }
     }
 
@@ -331,9 +336,9 @@ impl Interpreter {
             .expect("global context should exist")
     }
 
-    pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpError> {
+    pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         if self.depth > 1_000 {
-            return Err(InterpError::DepthLimitReached);
+            return self.error(ErrorKind::DepthLimitReached);
         }
         self.depth += 1;
         let val = match expr {
@@ -345,10 +350,19 @@ impl Interpreter {
                     self.get(x)
                 }
             }
+            Expr::VariantConstr((x, arg)) => {
+                if let Some(arg) = arg {
+                    let arg = self.eval(arg)?;
+                    Ok(Value::Variant((x.clone(), Some(Box::new(arg)))))
+                } else {
+                    // Value::Variant((Symbol, Option<Box<Value>>))
+                    todo!()
+                }
+            }
             Expr::IfElse(x) => match self.eval(&x.expr)? {
                 Value::Literal(Literal::Bool(true)) => self.eval(&x.case_true),
                 Value::Literal(Literal::Bool(false)) => self.eval(&x.case_false),
-                x => Err(InterpError::TypeMismatch((
+                x => self.error(ErrorKind::TypeMismatch((
                     Type::Intrinsic(IntrinsicType::Bool),
                     x.clone(),
                 ))),
@@ -377,7 +391,10 @@ impl Interpreter {
                 let func_expr = self.eval(func)?;
                 let arg_expr = self.eval(arg)?;
                 match func_expr {
-                    Value::Intrinsic(sy) => Self::eval_intrinsic(&sy, &arg_expr),
+                    Value::Intrinsic(sy) => match Self::eval_intrinsic(&sy, &arg_expr) {
+                        Err(e) => self.error(e),
+                        Ok(x) => Ok(x),
+                    },
                     Value::Function { func, mut context } => {
                         context.bind(&func.bind, arg_expr)?;
                         self.execution_contexts.push(context);
@@ -413,7 +430,7 @@ impl Interpreter {
         self.depth -= 1;
         val
     }
-    fn eval_statement(&mut self, st: &ast::Statement) -> Result<(), InterpError> {
+    fn eval_statement(&mut self, st: &ast::Statement) -> Result<(), Error> {
         match st {
             Statement::Let(st) => {
                 self.current_ctx_enter(&Pattern::Symbol(st.bind.clone()));
@@ -437,38 +454,25 @@ impl Interpreter {
                         Some(_) => Value::Function {
                             func: Function {
                                 bind: Pattern::Symbol(sym("a")),
-                                expr: Box::new(Expr::Appl(Appl {
-                                    func: Box::new(Expr::Symbol(v.constr.clone())),
-                                    arg: Box::new(Expr::Symbol(sym("a"))),
-                                })),
+                                expr: Box::new(Expr::VariantConstr((
+                                    v.constr.clone(),
+                                    Some(Box::new(Expr::Symbol(sym("a")))),
+                                ))),
                             },
                             context: self.current_ctx().clone(),
                         },
                     };
                     self.current_ctx_mut()
-                        .bind(&Pattern::Symbol(Symbol(v.constr.0.clone())), value)?;
+                        .bind(&Pattern::Symbol(v.constr.clone()), value)?;
                 }
             }
         }
         Ok(())
     }
-    pub fn eval_module(&mut self, module: &Module) -> Result<(), InterpError> {
+    pub fn eval_module(&mut self, module: &Module) -> Result<(), Error> {
         for st in &module.statements {
             self.eval_statement(st)?;
         }
         Ok(())
     }
-}
-
-#[inline]
-fn eq(l: Literal, r: Literal) -> Literal {
-    return Literal::Bool(l == r);
-}
-#[inline]
-fn sub(l: i128, r: i128) -> Literal {
-    return Literal::Int(l - r);
-}
-#[inline]
-fn mul(l: i128, r: i128) -> Literal {
-    return Literal::Int(l * r);
 }

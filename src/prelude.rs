@@ -27,5 +27,5 @@ pub fn u32_to_ascii(n: u32) -> String {
         s.push(c as char);
         n = n / 26;
     }
-    s
+    s.chars().rev().collect()
 }

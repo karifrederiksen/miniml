@@ -53,7 +53,7 @@ let main = (fact 6, incr_opt x)
     println!("{}\n\n", ast::print_module(&module));
     let global_ctx = inter::ExecutionContext::new_empty();
     {
-        use trc::Error as TCError;
+        use trc::Error;
         let mut ctx = trc::SymbolTypeContext::new();
         ctx.add_prelude(&mut gen);
         for st in &module.statements {
@@ -68,24 +68,24 @@ let main = (fact 6, incr_opt x)
                             ctx.add_global_symbol(st.bind.clone(), t.clone());
                             println!("{}: {}", st.bind, t);
                         }
-                        Err(TCError::TupleArityMismatch) => println!("{}: arity mismatch", st.bind),
-                        Err(TCError::TypeMismatch((t1, t2))) => {
+                        Err(Error::TupleArityMismatch) => println!("{}: arity mismatch", st.bind),
+                        Err(Error::TypeMismatch((t1, t2))) => {
                             println!("{}: type mismatch between {} and {}", st.bind, t1, t2)
                         }
                     }
                 }
                 Statement::Type(t) => {
                     use ast::{CustomType, FunctionType, Type, TypeScheme};
-                    let ty = Type::Custom(t.type_.clone()).generalize(&mut gen);
+                    let ty = Type::Custom(t.type_.clone());
+                    // println!("generalized {} to {}", t.type_, ty.type_);
                     for v in &t.variants {
-                        let ty = match &v.contained_type {
-                            None => ty.clone(),
-                            Some(contained_type) => TypeScheme {
-                                type_: Type::Func(Box::new(FunctionType {
+                        let ty = TypeScheme {
+                            type_: match &v.contained_type {
+                                None => ty.clone(),
+                                Some(contained_type) => Type::Func(Box::new(FunctionType {
                                     arg: contained_type.clone(),
-                                    return_: ty.type_.clone(),
+                                    return_: ty.clone(),
                                 })),
-                                variables: ty.variables.clone(),
                             },
                         };
                         println!("{}: {}", v.constr, ty);
@@ -98,18 +98,21 @@ let main = (fact 6, incr_opt x)
     let mut interp = inter::Interpreter::new(global_ctx);
     match interp.eval_module(&module) {
         Err(e) => {
-            use inter::InterpError;
-            let msg = match e {
-                InterpError::DepthLimitReached => "stack overflow".to_owned(),
-                InterpError::TypeMismatch((expected, found)) => format!(
+            use inter::{Error, ErrorKind};
+            let msg = match &e.kind {
+                ErrorKind::DepthLimitReached => "stack overflow".to_owned(),
+                ErrorKind::TypeMismatch((expected, found)) => format!(
                     "type mismatch: expected something of type {} and found value {}",
                     expected, found
                 ),
-                InterpError::UndefinedSymbol(sym) => {
+                ErrorKind::UndefinedSymbol(sym) => {
                     format!("symbol used before declaration: {}", sym)
                 }
             };
             println!("Evaluation error: {}", msg);
+            for x in e.stack {
+                println!("  {}", x);
+            }
             return;
         }
         Ok(()) => {}

@@ -1,9 +1,7 @@
 TODO
 
-Custom type should be able to contain other types for example `List a` or `List Int` kinda thing
-missing parts:
-* parser
-* type inference
+Some bugs related to custom types in interpreter and type reconstructor
+
 
 
 ===============

@@ -41,26 +41,16 @@ impl SymbolTypeContext {
                 arg: r,
                 return_: out,
             }));
-            self.global_symbol_type_map.insert(
-                sym(format!("intrinsic_{}", name)),
-                TypeScheme {
-                    variables: t.vars(),
-                    type_: t,
-                },
-            );
+            self.global_symbol_type_map
+                .insert(sym(format!("intrinsic_{}", name)), TypeScheme { type_: t });
         }
         for (name, (l, r, out)) in arity_2_intrinsics.into_iter() {
             let t = Type::Func(Box::new(FunctionType {
                 arg: Type::Tuple(TupleType(vec![l, r])),
                 return_: out,
             }));
-            self.global_symbol_type_map.insert(
-                sym(format!("intrinsic_{}", name)),
-                TypeScheme {
-                    variables: t.vars(),
-                    type_: t,
-                },
-            );
+            self.global_symbol_type_map
+                .insert(sym(format!("intrinsic_{}", name)), TypeScheme { type_: t });
         }
     }
     pub fn add_global_symbol(&mut self, sy: Symbol, sch: TypeScheme) {
@@ -90,6 +80,16 @@ impl SymbolTypeContext {
                     None => panic!("???: {}", x),
                 },
             },
+            Expr::VariantConstr((x, arg)) => {
+                // TODO: handle arg too
+                match self.global_symbol_type_map.get(x) {
+                    Some(x) => Ok(x.instantiate(gen)),
+                    None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
+                        Some((_, x)) => Ok(x.clone()),
+                        None => panic!("???: {}", x),
+                    },
+                }
+            }
             Expr::Function(x) => {
                 let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);
@@ -191,16 +191,14 @@ impl SymbolTypeContext {
                     self.global_symbol_type_map.get(&x.constr),
                     &x.contained_pattern,
                 ) {
-                    (Some(t), Some(p)) => {
-                        let (p_t, n) = self.infer_pattern(gen, scope_bindings, subst, p)?;
-                        match t.instantiate(gen) {
-                            Type::Func(ft) => {
-                                subst.unify(p_t, ft.arg)?;
-                                Ok((ft.return_, n))
-                            }
-                            t => Ok((t, n)),
+                    (Some(t), Some(p)) => match t.instantiate(gen) {
+                        Type::Func(ft) => {
+                            let (p_t, n) = self.infer_pattern(gen, scope_bindings, subst, p)?;
+                            subst.unify(p_t, ft.arg)?;
+                            Ok((subst.apply(ft.return_), n))
                         }
-                    }
+                        _ => todo!("this is a compiler/interpreter error"),
+                    },
                     (Some(t), None) => Ok((t.instantiate(gen), 0)),
                     _ => todo!("this'll have to be an error"),
                 }
@@ -263,22 +261,15 @@ impl Substitution {
                 Type::Tuple(TupleType(t.0.into_iter().map(|t| self.apply(t)).collect()))
             }
             Type::Intrinsic(t) => Type::Intrinsic(t),
-            Type::Custom(t) => Type::Custom(t),
+            Type::Custom(t) => Type::Custom(CustomType {
+                name: t.name.clone(),
+                variables: t.variables.iter().map(|v| self.apply(v.clone())).collect(),
+            }),
         }
     }
-    fn apply_scheme(&self, ty: &TypeScheme) -> TypeScheme {
-        let next = Substitution {
-            subs: {
-                let mut subs = self.subs.clone();
-                for v in &ty.variables {
-                    subs.remove(v);
-                }
-                subs
-            },
-        };
+    fn apply_scheme(&self, sch: &TypeScheme) -> TypeScheme {
         TypeScheme {
-            variables: ty.variables.clone(),
-            type_: next.apply(ty.type_.clone()),
+            type_: self.apply(sch.type_.clone()),
         }
     }
     fn apply_context(&self, ctx: &SymbolTypeContext) -> SymbolTypeContext {
@@ -321,6 +312,16 @@ impl Substitution {
                     Err(Error::TupleArityMismatch)
                 } else {
                     for (t1, t2) in t1.0.iter().zip(t2.0.iter()) {
+                        self.unify(self.apply(t1.clone()), self.apply(t2.clone()))?;
+                    }
+                    Ok(())
+                }
+            }
+            (Type::Custom(t1), Type::Custom(t2)) => {
+                if t1.variables.len() != t2.variables.len() {
+                    Err(Error::TupleArityMismatch) // make another error variant
+                } else {
+                    for (t1, t2) in t1.variables.iter().zip(t2.variables.iter()) {
                         self.unify(self.apply(t1.clone()), self.apply(t2.clone()))?;
                     }
                     Ok(())

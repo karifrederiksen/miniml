@@ -246,6 +246,7 @@ pub struct MatchCase {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Symbol(Symbol),
+    VariantConstr((Symbol, Option<Box<Expr>>)),
     Literal(Literal),
     Function(Function),
     Let(Let),
@@ -260,6 +261,13 @@ impl fmt::Display for Expr {
         match self {
             Self::Symbol(x) => {
                 write!(f, "{}", x)
+            }
+            Self::VariantConstr((x, arg)) => {
+                write!(f, "{}", x)?;
+                if let Some(arg) = arg {
+                    write!(f, " {}", arg)?;
+                }
+                Ok(())
             }
             Self::Literal(x) => {
                 write!(f, "{}", x)
@@ -330,7 +338,7 @@ pub struct FunctionType {
 
 impl fmt::Display for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", self.arg, self.return_)
+        write!(f, "({} -> {})", self.arg, self.return_)
     }
 }
 
@@ -357,12 +365,8 @@ impl VariableTypeGenerator {
         VariableType(format!("'{}", u32_to_ascii(id)))
     }
     pub fn next_scheme(&mut self) -> TypeScheme {
-        let t = self.next();
-        let mut variables = HashSet::new();
-        variables.insert(t.clone());
         TypeScheme {
-            variables,
-            type_: Type::Var(t),
+            type_: Type::Var(self.next()),
         }
     }
 }
@@ -437,7 +441,13 @@ impl Type {
                 x.return_.add_vars(vars);
             }
             Self::Intrinsic(_) => {}
-            Self::Custom(_) => {}
+            Self::Custom(x) => {
+                for v in &x.variables {
+                    if let Type::Var(v) = v {
+                        vars.insert(v.clone());
+                    }
+                }
+            }
         }
     }
     pub fn vars(&self) -> HashSet<VariableType> {
@@ -462,38 +472,37 @@ impl Type {
                 x.return_.replace(replacement);
             }
             Self::Intrinsic(_) => {}
-            Self::Custom(_) => {}
+            Self::Custom(x) => {
+                for v in x.variables.iter_mut() {
+                    v.replace(replacement);
+                }
+            }
         }
     }
 
     pub fn generalize(self, gen: &mut VariableTypeGenerator) -> TypeScheme {
-        let vars = self.vars();
-        let next_vars: HashSet<VariableType> = vars.iter().map(|_| gen.next()).collect();
-        let replacements: HashMap<VariableType, Type> = vars
+        let replacements: HashMap<VariableType, Type> = self
+            .vars()
             .into_iter()
-            .zip(next_vars.iter())
-            .map(|(from, to)| (from, Type::Var(to.clone())))
+            .map(|from| (from, Type::Var(gen.next())))
             .collect();
         let mut t = self;
         t.replace(&replacements);
-        TypeScheme {
-            variables: next_vars,
-            type_: t,
-        }
+        TypeScheme { type_: t }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeScheme {
-    pub variables: HashSet<VariableType>,
     pub type_: Type,
 }
 
 impl fmt::Display for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if !self.variables.is_empty() {
+        let vars = self.type_.vars();
+        if !vars.is_empty() {
             write!(f, "forall ")?;
-            for v in &self.variables {
+            for v in vars.into_iter() {
                 write!(f, "{} ", v)?;
             }
             write!(f, "=> ")?;
@@ -502,17 +511,10 @@ impl fmt::Display for TypeScheme {
     }
 }
 impl TypeScheme {
-    pub fn free_vars(&self) -> HashSet<VariableType> {
-        let mut vars: HashSet<_> = self.type_.vars();
-        for bound in &self.variables {
-            vars.remove(bound);
-        }
-        vars
-    }
-
     pub fn instantiate(&self, gen: &mut VariableTypeGenerator) -> Type {
         let replacements: HashMap<VariableType, Type> = self
-            .free_vars()
+            .type_
+            .vars()
             .into_iter()
             .map(|v| (v, Type::Var(gen.next())))
             .collect();
@@ -554,6 +556,13 @@ impl Printer {
             }
             Expr::Symbol(x) => {
                 self.print_str(&x.0);
+            }
+            Expr::VariantConstr((x, arg)) => {
+                self.print_str(&x.0);
+                if let Some(arg) = arg {
+                    self.space();
+                    self.print(arg);
+                }
             }
             Expr::Appl(x) => {
                 self.print_str("(");
