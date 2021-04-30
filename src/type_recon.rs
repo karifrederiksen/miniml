@@ -91,7 +91,7 @@ impl SymbolTypeContext {
                 },
             },
             Expr::Function(x) => {
-                let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, &x.bind);
+                let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);
                 Self::remove_n_bindings(scope_bindings, arg_n);
                 Ok(Type::Func(Box::new(FunctionType {
@@ -125,7 +125,8 @@ impl SymbolTypeContext {
                 let return_ = Type::Var(gen.next());
 
                 for case in &x.cases {
-                    let (pattern_t, n) = self.infer_pattern(gen, scope_bindings, &case.pattern);
+                    let (pattern_t, n) =
+                        self.infer_pattern(gen, scope_bindings, subst, &case.pattern)?;
                     if let Err(e) = subst.unify(pattern_t, expr_t.clone()) {
                         Self::remove_n_bindings(scope_bindings, n);
                         return Err(e);
@@ -137,7 +138,7 @@ impl SymbolTypeContext {
                 Ok(subst.apply(return_))
             }
             Expr::Let(x) => {
-                let (bind_t, bind_n) = self.infer_pattern(gen, scope_bindings, &x.bind);
+                let (bind_t, bind_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let bind_expr_t = match self.infer_expr(gen, scope_bindings, subst, &x.bind_expr) {
                     Ok(x) => x,
                     e => {
@@ -166,33 +167,43 @@ impl SymbolTypeContext {
         &self,
         gen: &mut VariableTypeGenerator,
         scope_bindings: &mut Vec<(Symbol, Type)>,
+        subst: &mut Substitution,
         pat: &Pattern,
-    ) -> (Type, usize) {
+    ) -> Result<(Type, usize), Error> {
         match pat {
             Pattern::Symbol(x) => {
                 let t = Type::Var(gen.next());
                 scope_bindings.push((x.clone(), t.clone()));
-                (t, 1)
+                Ok((t, 1))
             }
             Pattern::Tuple(x) => {
                 let mut n = 0;
                 let mut ts = Vec::<Type>::new();
-                for (t, tn) in
-                    x.0.iter()
-                        .map(|x| self.infer_pattern(gen, scope_bindings, x))
-                {
+                for pat in &x.0 {
+                    let (t, tn) = self.infer_pattern(gen, scope_bindings, subst, pat)?;
                     ts.push(t);
                     n += tn;
                 }
-                (Type::Tuple(TupleType(ts)), n)
+                Ok((Type::Tuple(TupleType(ts)), n))
             }
             Pattern::Variant(x) => {
-                let constr = Symbol(x.constr.0.clone());
-                let t = match self.global_symbol_type_map.get(&constr) {
-                    None => todo!("this'll have to be an error"),
-                    Some(x) => x,
-                };
-                (t.instantiate(gen), 0)
+                match (
+                    self.global_symbol_type_map.get(&x.constr),
+                    &x.contained_pattern,
+                ) {
+                    (Some(t), Some(p)) => {
+                        let (p_t, n) = self.infer_pattern(gen, scope_bindings, subst, p)?;
+                        match t.instantiate(gen) {
+                            Type::Func(ft) => {
+                                subst.unify(p_t, ft.arg)?;
+                                Ok((ft.return_, n))
+                            }
+                            t => Ok((t, n)),
+                        }
+                    }
+                    (Some(t), None) => Ok((t.instantiate(gen), 0)),
+                    _ => todo!("this'll have to be an error"),
+                }
             }
         }
     }

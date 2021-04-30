@@ -152,7 +152,7 @@ impl ExecutionContext {
             }
             (Pattern::Variant(v), Value::Variant((ty, val))) => {
                 if v.constr == ty {
-                    match (&v.pattern, val) {
+                    match (&v.contained_pattern, val) {
                         (Some(pattern), Some(val)) => {
                             self.bind(&*pattern, *val)?;
                         }

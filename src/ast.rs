@@ -100,14 +100,14 @@ impl fmt::Display for CustomTypeDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantPattern {
     pub constr: Symbol,
-    pub pattern: Option<Box<Pattern>>,
+    pub contained_pattern: Option<Box<Pattern>>,
 }
 
 impl fmt::Display for VariantPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.constr)?;
-        if let Some(pattern) = &self.pattern {
-            write!(f, "{}", pattern)?;
+        if let Some(contained_pattern) = &self.contained_pattern {
+            write!(f, "{}", contained_pattern)?;
         }
         Ok(())
     }
@@ -133,7 +133,7 @@ impl Pattern {
         match self {
             Self::Symbol(x) => x == s,
             Self::Tuple(ts) => ts.0.iter().any(|x| x.contains(s)),
-            Self::Variant(v) => match &v.pattern {
+            Self::Variant(v) => match &v.contained_pattern {
                 None => false,
                 Some(x) => x.contains(s),
             },

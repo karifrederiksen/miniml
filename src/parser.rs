@@ -129,8 +129,14 @@ fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
             success(None),
         )),
     ));
-    let (s, (constr, pattern)) = p(s)?;
-    Ok((s, Pattern::Variant(VariantPattern { constr, pattern })))
+    let (s, (constr, contained_pattern)) = p(s)?;
+    Ok((
+        s,
+        Pattern::Variant(VariantPattern {
+            constr,
+            contained_pattern,
+        }),
+    ))
 }
 fn parse_pattern(s: &str) -> IResult<&str, Pattern> {
     let mut p = branch::alt((
