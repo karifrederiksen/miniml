@@ -9,6 +9,12 @@ impl fmt::Display for Symbol {
     }
 }
 
+impl Symbol {
+    pub fn is_camelcase(&self) -> bool {
+        self.0.chars().next().unwrap().is_uppercase()
+    }
+}
+
 pub fn sym<S: Into<String>>(x: S) -> Symbol {
     Symbol(x.into())
 }

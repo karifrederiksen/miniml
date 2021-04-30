@@ -1,8 +1,10 @@
 TODO
 
 Custom type should be able to contain other types for example `List a` or `List Int` kinda thing
+missing parts:
+* parser
+* type inference
 
-the current CustomType should probably be called CustomTypeSymbol
 
 ===============
 

@@ -195,7 +195,7 @@ pub enum InterpError {
 #[derive(Debug)]
 pub struct Interpreter {
     execution_contexts: Vec<ExecutionContext>,
-    types: HashMap<CustomType, CustomTypeDefinition>,
+    types: HashMap<CustomTypeSymbol, CustomTypeDefinition>,
     depth: usize,
 }
 
@@ -389,8 +389,8 @@ impl Interpreter {
                 }
             }
             Expr::Tuple(x) => {
-                let mut exprs = Vec::with_capacity(x.exprs.len());
-                for e in &x.exprs {
+                let mut exprs = Vec::with_capacity(x.0.len());
+                for e in &x.0 {
                     exprs.push(self.eval(e)?);
                 }
                 Ok(Value::Tuple(exprs))

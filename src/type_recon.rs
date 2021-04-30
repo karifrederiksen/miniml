@@ -12,7 +12,7 @@ pub enum Error {
 
 pub struct SymbolTypeContext {
     global_symbol_type_map: HashMap<Symbol, TypeScheme>,
-    global_constructor_type_map: HashMap<CustomType, TypeScheme>,
+    global_constructor_type_map: HashMap<CustomTypeSymbol, TypeScheme>,
 }
 
 impl SymbolTypeContext {
@@ -156,8 +156,8 @@ impl SymbolTypeContext {
                 next_expr_t
             }
             Expr::Tuple(x) => {
-                let mut ts: Vec<Type> = Vec::with_capacity(x.exprs.len());
-                for e in &x.exprs {
+                let mut ts: Vec<Type> = Vec::with_capacity(x.0.len());
+                for e in &x.0 {
                     ts.push(self.infer_expr(gen, scope_bindings, subst, e)?);
                 }
                 Ok(subst.apply(Type::Tuple(TupleType(ts))))

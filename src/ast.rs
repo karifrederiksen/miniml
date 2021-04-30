@@ -43,7 +43,7 @@ impl fmt::Display for TuplePattern {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantDefinition {
     pub constr: Symbol,
-    pub expr: Option<Type>,
+    pub expr: Type,
 }
 impl fmt::Display for VariantDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -54,22 +54,25 @@ impl fmt::Display for VariantDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variant {
     pub constr: Symbol,
-    pub value: Option<Expr>,
+    pub value: Expr,
 }
 impl fmt::Display for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.constr)?;
-        if let Some(value) = &self.value {
-            write!(f, " {}", value)?;
+        match &self.value {
+            Expr::Tuple(Tuple(exprs)) if exprs.len() == 0 => {}
+            v => {
+                write!(f, " {}", v)?;
+            }
         }
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct CustomType(pub String);
+pub struct CustomTypeSymbol(pub String);
 
-impl fmt::Display for CustomType {
+impl fmt::Display for CustomTypeSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -77,12 +80,12 @@ impl fmt::Display for CustomType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomTypeDefinition {
-    pub name: CustomType,
+    pub type_: CustomType,
     pub variants: Vec<VariantDefinition>,
 }
 impl fmt::Display for CustomTypeDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "type {}", self.name)?;
+        writeln!(f, "type {}", self.type_)?;
         for v in self.variants.iter().take(1) {
             writeln!(f, "    = {}", v)?;
         }
@@ -201,23 +204,18 @@ impl fmt::Display for IfElse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tuple {
-    pub exprs: Vec<Expr>,
-}
+pub struct Tuple(pub Vec<Expr>);
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
-        for e in self.exprs.iter().take(1) {
+        for e in self.0.iter().take(1) {
             write!(f, "{}", e)?;
         }
-        for e in self.exprs.iter().skip(1) {
+        for e in self.0.iter().skip(1) {
             write!(f, ", {}", e)?;
         }
         write!(f, ")")
     }
-}
-pub fn tuple_expr(exprs: Vec<Expr>) -> Expr {
-    Expr::Tuple(Tuple { exprs })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -392,6 +390,23 @@ impl fmt::Display for TupleType {
             write!(f, ", {}", e)?;
         }
         write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CustomType {
+    pub name: CustomTypeSymbol,
+    pub variables: Vec<Type>,
+}
+impl fmt::Display for CustomType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.variables.is_empty() {
+            for v in &self.variables {
+                write!(f, " {}", v)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -573,10 +588,10 @@ impl Printer {
             }
             Expr::Tuple(x) => {
                 self.print_str("(");
-                for x in x.exprs.iter().take(1) {
+                for x in x.0.iter().take(1) {
                     self.print(x);
                 }
-                for x in x.exprs.iter().skip(1) {
+                for x in x.0.iter().skip(1) {
                     self.print_str(", ");
                     self.print(x);
                 }

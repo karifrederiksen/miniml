@@ -67,10 +67,11 @@ let main = (fact 6, f Fa)
                     }
                 }
                 Statement::Type(t) => {
-                    use ast::Type;
-                    let ty = Type::Custom(t.name.clone());
+                    use ast::{CustomType, Type};
+                    let ty = Type::Custom(t.type_.clone()).generalize(&mut gen);
                     for v in &t.variants {
-                        ctx.add_global_symbol(v.constr.clone(), ty.clone().generalize(&mut gen));
+                        println!("{}: {}", v.constr, ty);
+                        ctx.add_global_symbol(v.constr.clone(), ty.clone());
                     }
                 }
             }
@@ -111,7 +112,7 @@ mod tests {
     use test::{black_box, Bencher};
 
     #[bench]
-    fn bench_stuff(b: &mut Bencher) {
+    fn bench_stuff(_b: &mut Bencher) {
         // let ast = factorial_expr(30);
         // let mut interp = interpreter::Interpreter::new();
         // b.iter(|| {

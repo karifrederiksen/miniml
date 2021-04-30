@@ -12,6 +12,12 @@ use nom::IResult;
 use crate::ast::*;
 use crate::prelude::{sym, Symbol};
 
+const RESERVED_CAMELCASE_SYMBOLS: [&'static str; 4] = ["Int", "Bool", "True", "False"];
+
+const RESERVED_LOWERCASE_SYMBOLS: [&'static str; 10] = [
+    "let", "rec", "in", "if", "then", "else", "fn", "match", "with", "type",
+];
+
 fn is_space_or_lf(c: char) -> bool {
     " \t\n\r".contains(c)
 }
@@ -52,15 +58,7 @@ fn parse_literal_expr(s: &str) -> IResult<&str, Expr> {
     p(s)
 }
 
-const RESERVED_SYMBOLS: [&'static str; 10] = [
-    "let", "rec", "in", "if", "then", "else", "fn", "match", "with", "type",
-];
-
-fn is_not_reserved(s: &str) -> bool {
-    !RESERVED_SYMBOLS.contains(&s)
-}
-
-fn parse_sym(s: &str) -> IResult<&str, Symbol> {
+fn parse_lowercase_symbol(s: &str) -> IResult<&str, Symbol> {
     use std::iter::FromIterator;
     let mut p = map(
         verify(
@@ -74,18 +72,41 @@ fn parse_sym(s: &str) -> IResult<&str, Symbol> {
                 )),
                 |(first, second): (char, String)| format!("{}{}", first, second),
             ),
-            is_not_reserved,
+            |s| !RESERVED_LOWERCASE_SYMBOLS.contains(&s),
+        ),
+        sym,
+    );
+    p(s)
+}
+
+fn parse_camelcase_symbol(s: &str) -> IResult<&str, Symbol> {
+    use std::iter::FromIterator;
+    let mut p = map(
+        verify(
+            map(
+                seq::tuple((
+                    character::one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+                    map(
+                        multi::many0(character::one_of(
+                            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+                        )),
+                        String::from_iter,
+                    ),
+                )),
+                |(first, second): (char, String)| format!("{}{}", first, second),
+            ),
+            |s| !RESERVED_CAMELCASE_SYMBOLS.contains(&s),
         ),
         sym,
     );
     p(s)
 }
 fn parse_sym_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = context("Symbol", map(parse_sym, Expr::Symbol));
+    let mut p = context("Symbol", map(parse_lowercase_symbol, Expr::Symbol));
     p(s)
 }
 fn parse_sym_pattern(s: &str) -> IResult<&str, Pattern> {
-    let mut p = map(parse_sym, Pattern::Symbol);
+    let mut p = map(parse_lowercase_symbol, Pattern::Symbol);
     p(s)
 }
 fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
@@ -101,9 +122,9 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
 }
 
 fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
-    let mut p = map(parse_custom_type, |t| {
+    let mut p = map(parse_camelcase_symbol, |t| {
         Pattern::Variant(VariantPattern {
-            constr: Symbol(t.0),
+            constr: t,
             pattern: None,
         })
     });
@@ -249,7 +270,7 @@ fn parse_tuple_expr(s: &str) -> IResult<&str, Expr> {
                 if exprs.len() == 1 {
                     exprs.get(0).unwrap().clone()
                 } else {
-                    Expr::Tuple(Tuple { exprs })
+                    Expr::Tuple(Tuple(exprs))
                 }
             },
         ),
@@ -290,7 +311,7 @@ fn parse_match_expr(s: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = map(parse_custom_type, |x| Expr::Symbol(Symbol(x.0)));
+    let mut p = map(parse_camelcase_symbol, |x| Expr::Symbol(x));
     p(s)
 }
 fn parse_expr(s: &str) -> IResult<&str, Expr> {
@@ -350,7 +371,7 @@ fn parse_let_statement(s: &str) -> IResult<&str, Statement> {
         seq::tuple((
             branch::alt((map(tag("rec"), |_| true), map(tag("let"), |_| false))),
             space_lf1,
-            parse_sym,
+            parse_lowercase_symbol,
             branch::alt((
                 map(seq::preceded(space_lf1, parse_pattern), Some),
                 success(None),
@@ -376,31 +397,23 @@ fn parse_let_statement(s: &str) -> IResult<&str, Statement> {
 
 fn parse_custom_type(s: &str) -> IResult<&str, CustomType> {
     use std::iter::FromIterator;
-    let mut p = map(
-        seq::tuple((
-            character::one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-            map(
-                multi::many0(character::one_of(
-                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                )),
-                String::from_iter,
-            ),
-        )),
-        |(first, second): (char, String)| CustomType(format!("{}{}", first, second)),
-    );
+    let mut p = map(parse_camelcase_symbol, |s| CustomType {
+        name: CustomTypeSymbol(s.0),
+        variables: Vec::new(),
+    });
     p(s)
 }
 fn parse_variant_definition(s: &str) -> IResult<&str, VariantDefinition> {
-    let mut p = map(parse_custom_type, |t| VariantDefinition {
-        constr: Symbol(t.0),
-        expr: None,
+    let mut p = map(parse_camelcase_symbol, |t| VariantDefinition {
+        constr: t,
+        expr: Type::Tuple(TupleType(Vec::new())),
     });
     p(s)
 }
 fn parse_variant(s: &str) -> IResult<&str, Variant> {
-    let mut p = map(parse_custom_type, |t| Variant {
-        constr: Symbol(t.0),
-        value: None,
+    let mut p = map(parse_camelcase_symbol, |t| Variant {
+        constr: t,
+        value: Expr::Tuple(Tuple(Vec::new())),
     });
     p(s)
 }
@@ -415,8 +428,8 @@ fn parse_custom_type_statement(s: &str) -> IResult<&str, Statement> {
             parse_variant_definition,
         ),
     ));
-    let (s, (_, name, _, variants)) = p(s)?;
-    let ty = CustomTypeDefinition { name, variants };
+    let (s, (_, type_, _, variants)) = p(s)?;
+    let ty = CustomTypeDefinition { type_, variants };
     Ok((s, Statement::Type(ty)))
 }
 
