@@ -295,15 +295,16 @@ impl fmt::Display for Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LetStatement {
+pub struct SymbolBinding {
     pub recursive: bool,
     pub bind: Symbol,
+    pub type_: Option<TypeScheme>,
     pub expr: Expr,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
-    Let(LetStatement),
-    Type(CustomTypeDefinition),
+    SymbolBinding(SymbolBinding),
+    CustomType(CustomTypeDefinition),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -642,6 +643,40 @@ impl Printer {
             }
         }
     }
+    fn print_statement(&mut self, st: &Statement) {
+        match st {
+            Statement::SymbolBinding(st) => {
+                let decl_sym = if st.recursive { "rec" } else { "let" };
+                if let Some(type_) = &st.type_ {
+                    self.print_str(decl_sym);
+                    self.space();
+                    self.print_str(&st.bind.0);
+                    self.space();
+                    self.print_str(":");
+                    self.space();
+                    self.print_str(&format!("{}", type_));
+                    self.newline();
+                }
+                self.print_str(decl_sym);
+                self.space();
+                self.print_str(&st.bind.0);
+                self.space();
+                self.print_str("=");
+                self.space();
+                self.print(&st.expr);
+            }
+            Statement::CustomType(t) => {
+                self.print_str(&format!("{}", t));
+            }
+        }
+    }
+    fn print_module(&mut self, module: &Module) {
+        for st in &module.statements {
+            self.print_statement(&st);
+            self.newline();
+            self.force_newline();
+        }
+    }
     fn indent_incr(&mut self) {
         self.ind_level += 1;
         self.newline();
@@ -649,6 +684,10 @@ impl Printer {
     fn indent_decr(&mut self) {
         self.ind_level -= 1;
         self.newline();
+    }
+    fn force_newline(&mut self) {
+        self.text.push('\n');
+        self.current_line_len = 0;
     }
     fn newline(&mut self) {
         self.current_line_len = 0;
@@ -676,23 +715,7 @@ pub fn print_expr(e: &Expr) -> String {
 }
 
 pub fn print_module(p: &Module) -> String {
-    let mut s = String::new();
-    for st in &p.statements {
-        let mut printer = Printer::new();
-        match st {
-            Statement::Let(st) => {
-                printer.print(&st.expr);
-                if st.recursive {
-                    s.push_str("rec");
-                } else {
-                    s.push_str("let");
-                }
-                s.push_str(&format!(" {} = {}\n\n", &st.bind, &printer.text));
-            }
-            Statement::Type(t) => {
-                s.push_str(&format!("{}\n", t));
-            }
-        }
-    }
-    s
+    let mut printer = Printer::new();
+    printer.print_module(&p);
+    printer.text
 }

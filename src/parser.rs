@@ -372,10 +372,25 @@ pub fn parse(s: &str) -> Result<Expr, String> {
         Err(e) => Err(format!("{}", e)),
     }
 }
-
-fn parse_let_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
+fn parse_symbol_binding_type<'a>(s: &'a str) -> IResult<&'a str, (Symbol, Type)> {
+    let mut p = map(
+        context(
+            "SymbolBindingType",
+            seq::tuple((
+                branch::alt((tag("rec"), tag("let"))),
+                space_lf1,
+                parse_lowercase_symbol,
+                seq::tuple((space_lf0, tag(":"), space_lf0)),
+                parse_type,
+            )),
+        ),
+        |(_, _, symbol, _, type_)| (symbol, type_),
+    );
+    p(s)
+}
+fn parse_symbol_binding<'a>(s: &'a str) -> IResult<&'a str, SymbolBinding> {
     let mut p = context(
-        "LetStatement",
+        "SymbolBinding",
         seq::tuple((
             branch::alt((map(tag("rec"), |_| true), map(tag("let"), |_| false))),
             space_lf1,
@@ -388,10 +403,11 @@ fn parse_let_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
             parse_expr,
         )),
     );
-    let (s, (recursive, _, sym, par, _, expr)) = p(s)?;
-    let stmt = LetStatement {
+    let (s, (recursive, _, bind, par, _, expr)) = p(s)?;
+    let stmt = SymbolBinding {
         recursive,
-        bind: sym,
+        bind,
+        type_: None,
         expr: match par {
             None => expr,
             Some(par) => Expr::Function(Function {
@@ -400,7 +416,28 @@ fn parse_let_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
             }),
         },
     };
-    Ok((s, Statement::Let(stmt)))
+    Ok((s, stmt))
+}
+
+fn parse_symbol_binding_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
+    let binding_with_type = combinator::flat_map(parse_symbol_binding_type, |(sym, type_)| {
+        map(
+            verify(seq::preceded(space_lf1, parse_symbol_binding), move |x| {
+                x.bind == sym
+            }),
+            move |mut x| {
+                x.type_ = Some(TypeScheme {
+                    type_: type_.clone(),
+                });
+                x
+            },
+        )
+    });
+    let mut p = map(
+        branch::alt((binding_with_type, parse_symbol_binding)),
+        Statement::SymbolBinding,
+    );
+    p(s)
 }
 
 fn parse_custom_type<'a>(s: &'a str) -> IResult<&'a str, CustomType> {
@@ -456,7 +493,7 @@ fn parse_custom_type_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
     ));
     let (s, (_, type_, _, variants)) = p(s)?;
     let ty = CustomTypeDefinition { type_, variants };
-    Ok((s, Statement::Type(ty)))
+    Ok((s, Statement::CustomType(ty)))
 }
 
 pub fn parse_module(s: &str) -> Result<Module, String> {
@@ -465,7 +502,7 @@ pub fn parse_module(s: &str) -> Result<Module, String> {
             space_lf0,
             multi::separated_list1(
                 space_lf1,
-                branch::alt((parse_let_statement, parse_custom_type_statement)),
+                branch::alt((parse_symbol_binding_statement, parse_custom_type_statement)),
             ),
             space_lf0,
         )),
@@ -521,13 +558,22 @@ fn parse_custom_type_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
 }
 
 fn parse_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
-    let mut p = branch::alt((
+    let p = branch::alt((
         parse_intrinsic_type,
         parse_var_type,
         parse_tuple_type,
         parse_custom_type_type,
     ));
-    // todo: handle function types.
-    //       they need to be handled similarly to function applications to avoid stack overflow
+    let sep = seq::tuple((space_lf0, tag("->"), space_lf0));
+    let mut p = map(multi::separated_list1(sep, p), |ts| {
+        let mut t = ts.last().unwrap().clone();
+        for t_next in ts.iter().rev().skip(1) {
+            t = Type::Func(Box::new(FunctionType {
+                arg: t_next.clone(),
+                return_: t,
+            }));
+        }
+        t
+    });
     p(s)
 }

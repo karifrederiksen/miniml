@@ -4,8 +4,12 @@ Some bugs related to custom types in interpreter and type reconstructor
 
 
 
-===============
+==============
+Revelation:
 
+the input for the nom parser doesn't have to be &str. It can be (&str, ContextStack) or Context or whatever I want
+
+==============
 
 records = tuples with fields in a total order (perhaps alphabetic by name)
 

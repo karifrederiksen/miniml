@@ -26,7 +26,7 @@ let or l = \\r -> intrinsic_or (l, r)
 
 fn main() {
     let mut gen = ast::VariableTypeGenerator::new();
-    let module: ast::Module = {
+    let mut module: ast::Module = {
         let src: &str = "
 type Option a = Some a | None
 
@@ -42,6 +42,7 @@ rec fact n =
 
 let x = Some 1
 
+let incr : Int -> Int
 let incr = add 1
 
 let incr_opt = map incr
@@ -50,51 +51,20 @@ let main = (fact 6, incr_opt x)
 ";
         parser::parse_module(&format!("{}\n{}", PRELUDE, src)).unwrap()
     };
-    println!("{}\n\n", ast::print_module(&module));
     let global_ctx = inter::ExecutionContext::new_empty();
     {
         use trc::Error;
         let mut ctx = trc::SymbolTypeContext::new();
         ctx.add_prelude(&mut gen);
-        for st in &module.statements {
-            match st {
-                Statement::Let(st) => {
-                    if st.recursive {
-                        ctx.add_global_symbol(st.bind.clone(), gen.next_scheme());
-                    }
-                    match ctx.infer(&mut gen, &st.expr) {
-                        Ok(t) => {
-                            let t = t.generalize(&mut gen);
-                            ctx.add_global_symbol(st.bind.clone(), t.clone());
-                            println!("{}: {}", st.bind, t);
-                        }
-                        Err(Error::TupleArityMismatch) => println!("{}: arity mismatch", st.bind),
-                        Err(Error::TypeMismatch((t1, t2))) => {
-                            println!("{}: type mismatch between {} and {}", st.bind, t1, t2)
-                        }
-                    }
-                }
-                Statement::Type(t) => {
-                    use ast::{CustomType, FunctionType, Type, TypeScheme};
-                    let ty = Type::Custom(t.type_.clone());
-                    // println!("generalized {} to {}", t.type_, ty.type_);
-                    for v in &t.variants {
-                        let ty = TypeScheme {
-                            type_: match &v.contained_type {
-                                None => ty.clone(),
-                                Some(contained_type) => Type::Func(Box::new(FunctionType {
-                                    arg: contained_type.clone(),
-                                    return_: ty.clone(),
-                                })),
-                            },
-                        };
-                        println!("{}: {}", v.constr, ty);
-                        ctx.add_global_symbol(v.constr.clone(), ty);
-                    }
-                }
+        match ctx.annotate(&mut gen, &mut module) {
+            Ok(()) => {}
+            Err(Error::TupleArityMismatch) => println!("arity mismatch"),
+            Err(Error::TypeMismatch((t1, t2))) => {
+                println!("type mismatch between {} and {}", t1, t2)
             }
-        }
+        };
     }
+    println!("{}\n\n", ast::print_module(&module));
     let mut interp = inter::Interpreter::new(global_ctx);
     match interp.eval_module(&module) {
         Err(e) => {

@@ -56,6 +56,42 @@ impl SymbolTypeContext {
     pub fn add_global_symbol(&mut self, sy: Symbol, sch: TypeScheme) {
         self.global_symbol_type_map.insert(sy, sch);
     }
+    pub fn annotate(
+        &mut self,
+        gen: &mut VariableTypeGenerator,
+        module: &mut Module,
+    ) -> Result<(), Error> {
+        for st in &mut module.statements {
+            match st {
+                Statement::SymbolBinding(st) => {
+                    if st.recursive {
+                        self.add_global_symbol(st.bind.clone(), gen.next_scheme());
+                    }
+                    let ty = self.infer(gen, &st.expr)?;
+                    let ty = ty.generalize(gen);
+                    self.add_global_symbol(st.bind.clone(), ty.clone());
+                    st.type_ = Some(ty);
+                }
+                Statement::CustomType(t) => {
+                    let ty = Type::Custom(t.type_.clone());
+                    // println!("generalized {} to {}", t.type_, ty.type_);
+                    for v in &t.variants {
+                        let ty = TypeScheme {
+                            type_: match &v.contained_type {
+                                None => ty.clone(),
+                                Some(contained_type) => Type::Func(Box::new(FunctionType {
+                                    arg: contained_type.clone(),
+                                    return_: ty.clone(),
+                                })),
+                            },
+                        };
+                        self.add_global_symbol(v.constr.clone(), ty);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 
     pub fn infer(&self, gen: &mut VariableTypeGenerator, expr: &Expr) -> Result<Type, Error> {
         let mut subber = Substitution::new();

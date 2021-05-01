@@ -432,7 +432,7 @@ impl Interpreter {
     }
     fn eval_statement(&mut self, st: &ast::Statement) -> Result<(), Error> {
         match st {
-            Statement::Let(st) => {
+            Statement::SymbolBinding(st) => {
                 self.current_ctx_enter(&Pattern::Symbol(st.bind.clone()));
                 if st.recursive {
                     self.current_ctx_mut()
@@ -447,7 +447,7 @@ impl Interpreter {
                     self.current_ctx_mut().recursives.pop();
                 }
             }
-            Statement::Type(t) => {
+            Statement::CustomType(t) => {
                 for v in &t.variants {
                     let value = match &v.contained_type {
                         None => Value::Variant((v.constr.clone(), None)),
