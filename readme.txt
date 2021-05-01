@@ -1,8 +1,7 @@
-TODO
+TODO:
 
-Some bugs related to custom types in type reconstructor
-
-
+* Exhaustiveness check for patterns
+* Replace panics with Error variants
 
 ==============
 Revelation:
@@ -15,6 +14,8 @@ records = tuples with fields in a total order (perhaps alphabetic by name)
 
 # ideas to explore
 
+* arbitrary order of statements (statements are exclusively top-level)
+    * There can be a transformation for putting them in dependence-order, and we can modify the binding-statement so that it contains a vector of bindings so that bindings that are mutually recursive will be part of the same statement.
 * pattern matching exhaustiveness checking
 * operators
 * pattern-matching in function definition:

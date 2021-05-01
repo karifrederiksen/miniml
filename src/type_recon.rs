@@ -178,7 +178,6 @@ impl SymbolTypeContext {
                     Self::remove_n_bindings(scope_bindings, n);
                     let expr_t = subst.apply(expr_t?);
                     subst.unify(return_.clone(), expr_t)?;
-                    print_subst(subst);
                 }
                 let t = subst.apply(return_);
                 Ok(t)
