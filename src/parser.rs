@@ -318,10 +318,6 @@ fn parse_match_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     ))
 }
 
-fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = map(parse_camelcase_symbol, |x| Expr::Symbol(x));
-    p(s)
-}
 fn parse_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let mut p = context(
         "Expr",
@@ -470,15 +466,21 @@ fn parse_variant_definition<'a>(s: &'a str) -> IResult<&'a str, VariantDefinitio
     ))
 }
 fn parse_variant<'a>(s: &'a str) -> IResult<&'a str, Variant> {
-    let mut p = seq::tuple((
-        parse_camelcase_symbol,
-        branch::alt((
-            seq::preceded(space_lf1, map(parse_expr, Some)),
-            success(None),
+    let mut p = map(
+        seq::tuple((
+            parse_camelcase_symbol,
+            branch::alt((
+                seq::preceded(space_lf1, map(parse_expr, |x| Some(Box::new(x)))),
+                success(None),
+            )),
         )),
-    ));
-    let (s, (constr, value)) = p(s)?;
-    Ok((s, Variant { constr, value }))
+        |(constr, value)| Variant { constr, value },
+    );
+    p(s)
+}
+fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
+    let mut p = map(parse_variant, Expr::VariantConstr);
+    p(s)
 }
 
 fn parse_custom_type_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {

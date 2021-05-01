@@ -25,7 +25,6 @@ let or l = \\r -> intrinsic_or (l, r)
 ";
 
 fn main() {
-    let mut gen = ast::VariableTypeGenerator::new();
     let mut module: ast::Module = {
         let src: &str = "
 type Option a = Some a | None
@@ -55,8 +54,8 @@ let main = (fact 6, incr_opt x)
     {
         use trc::Error;
         let mut ctx = trc::SymbolTypeContext::new();
-        ctx.add_prelude(&mut gen);
-        match ctx.annotate(&mut gen, &mut module) {
+        ctx.add_prelude();
+        match ctx.annotate(&mut module) {
             Ok(()) => {}
             Err(Error::TupleArityMismatch) => println!("arity mismatch"),
             Err(Error::TypeMismatch((t1, t2))) => {

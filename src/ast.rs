@@ -58,7 +58,7 @@ impl fmt::Display for VariantDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variant {
     pub constr: Symbol,
-    pub value: Option<Expr>,
+    pub value: Option<Box<Expr>>,
 }
 impl fmt::Display for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -246,7 +246,7 @@ pub struct MatchCase {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Symbol(Symbol),
-    VariantConstr((Symbol, Option<Box<Expr>>)),
+    VariantConstr(Variant),
     Literal(Literal),
     Function(Function),
     Let(Let),
@@ -262,9 +262,9 @@ impl fmt::Display for Expr {
             Self::Symbol(x) => {
                 write!(f, "{}", x)
             }
-            Self::VariantConstr((x, arg)) => {
-                write!(f, "{}", x)?;
-                if let Some(arg) = arg {
+            Self::VariantConstr(x) => {
+                write!(f, "{}", x.constr)?;
+                if let Some(arg) = &x.value {
                     write!(f, " {}", arg)?;
                 }
                 Ok(())
@@ -502,13 +502,22 @@ impl fmt::Display for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vars = self.type_.vars();
         if !vars.is_empty() {
+            let replacements: Vec<(VariableType, Type)> = vars
+                .into_iter()
+                .enumerate()
+                .map(|(n, key)| (key, Type::Var(VariableType(u32_to_ascii((n + 1) as u32)))))
+                .collect();
             write!(f, "forall ")?;
-            for v in vars.into_iter() {
+            for (_, v) in &replacements {
                 write!(f, "{} ", v)?;
             }
-            write!(f, "=> ")?;
+            let mut t = self.type_.clone();
+            let replacements: HashMap<VariableType, Type> = replacements.into_iter().collect();
+            t.replace(&replacements);
+            write!(f, "=> {}", t)
+        } else {
+            write!(f, "{}", self.type_)
         }
-        write!(f, "{}", self.type_)
     }
 }
 impl TypeScheme {
@@ -558,9 +567,9 @@ impl Printer {
             Expr::Symbol(x) => {
                 self.print_str(&x.0);
             }
-            Expr::VariantConstr((x, arg)) => {
-                self.print_str(&x.0);
-                if let Some(arg) = arg {
+            Expr::VariantConstr(x) => {
+                self.print_str(&x.constr.0);
+                if let Some(arg) = &x.value {
                     self.space();
                     self.print(arg);
                 }

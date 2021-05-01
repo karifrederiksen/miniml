@@ -21,8 +21,8 @@ impl SymbolTypeContext {
         }
     }
 
-    pub fn add_prelude(&mut self, gen: &mut VariableTypeGenerator) {
-        let t_a = Type::Var(gen.next());
+    pub fn add_prelude(&mut self) {
+        let t_a = Type::Var(VariableType("'a".to_owned()));
         let t_bool = Type::Intrinsic(IntrinsicType::Bool);
         let t_int = Type::Intrinsic(IntrinsicType::Int);
         let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
@@ -56,19 +56,16 @@ impl SymbolTypeContext {
     pub fn add_global_symbol(&mut self, sy: Symbol, sch: TypeScheme) {
         self.global_symbol_type_map.insert(sy, sch);
     }
-    pub fn annotate(
-        &mut self,
-        gen: &mut VariableTypeGenerator,
-        module: &mut Module,
-    ) -> Result<(), Error> {
+    pub fn annotate(&mut self, module: &mut Module) -> Result<(), Error> {
         for st in &mut module.statements {
             match st {
                 Statement::SymbolBinding(st) => {
+                    let mut gen = VariableTypeGenerator::new();
                     if st.recursive {
                         self.add_global_symbol(st.bind.clone(), gen.next_scheme());
                     }
-                    let ty = self.infer(gen, &st.expr)?;
-                    let ty = ty.generalize(gen);
+                    let ty = self.infer(&mut gen, &st.expr)?;
+                    let ty = ty.generalize(&mut gen);
                     self.add_global_symbol(st.bind.clone(), ty.clone());
                     st.type_ = Some(ty);
                 }
@@ -109,32 +106,39 @@ impl SymbolTypeContext {
             Expr::Literal(Literal::Bool(_)) => Ok(Type::Intrinsic(IntrinsicType::Bool)),
             Expr::Literal(Literal::Int(_)) => Ok(Type::Intrinsic(IntrinsicType::Int)),
             Expr::Symbol(x) => match self.global_symbol_type_map.get(x) {
-                Some(x) => Ok(x.instantiate(gen)),
-                None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
-                    Some((_, x)) => Ok(x.clone()),
-                    None => todo!("???: {}", x),
-                },
-            },
-            Expr::VariantConstr((x, arg)) => match self.global_symbol_type_map.get(x) {
-                Some(x) => {
-                    let arg_t = match arg {
-                        None => None,
-                        Some(x) => Some(self.infer_expr(gen, scope_bindings, subst, &*x)),
-                    };
-                    match (&x.type_, arg_t) {
-                        (Type::Func(func_t), Some(arg_t)) => {
-                            let arg_t = arg_t?;
-                            subst.unify(func_t.return_.clone(), arg_t)?;
-                        }
-                        _ => todo!("this should be an error?"),
-                    };
-                    Ok(x.instantiate(gen))
+                Some(t) => {
+                    println!(" symbol {} : {}", x, t);
+                    Ok(t.instantiate(gen))
                 }
                 None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
-                    Some((_, x)) => Ok(x.clone()),
-                    None => todo!("???: {}", x),
+                    Some((_, t)) => {
+                        println!(" symbol {} : {}", x, t);
+                        Ok(t.clone())
+                    }
+                    None => todo!("undefined symbol: {}", x),
                 },
             },
+            Expr::VariantConstr(Variant { constr, value }) => {
+                match self.global_symbol_type_map.get(&constr) {
+                    Some(constr_t) => {
+                        let arg_t = match value {
+                            None => None,
+                            Some(x) => Some(self.infer_expr(gen, scope_bindings, subst, &*x)),
+                        };
+                        match (constr_t.instantiate(gen), arg_t) {
+                            (Type::Func(func_t), Some(arg_t)) => {
+                                let arg_t = arg_t?;
+                                println!("unifying2 {} and {}", func_t.arg, arg_t);
+                                subst.unify(func_t.arg.clone(), arg_t)?;
+                                Ok(func_t.return_)
+                            }
+                            (t, None) => Ok(t),
+                            (x, y) => todo!("this should be an error?\n {:?}\n {:?}", x, y),
+                        }
+                    }
+                    None => todo!("undefined variant constructor: {}", constr),
+                }
+            }
             Expr::Function(x) => {
                 let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);
@@ -172,6 +176,7 @@ impl SymbolTypeContext {
                 for case in &x.cases {
                     let (pattern_t, n) =
                         self.infer_pattern(gen, scope_bindings, subst, &case.pattern)?;
+                    println!("unifying1 {} and {}", pattern_t, expr_t);
                     if let Err(e) = subst.unify(pattern_t, expr_t.clone()) {
                         Self::remove_n_bindings(scope_bindings, n);
                         return Err(e);
@@ -242,7 +247,7 @@ impl SymbolTypeContext {
                             subst.unify(p_t, ft.arg)?;
                             Ok((subst.apply(ft.return_), n))
                         }
-                        _ => todo!("this is a compiler/interpreter error"),
+                        _ => panic!("this is a compiler/interpreter invariant error"),
                     },
                     (Some(t), None) => Ok((t.instantiate(gen), 0)),
                     _ => todo!("this'll have to be an error"),

@@ -350,10 +350,10 @@ impl Interpreter {
                     self.get(x)
                 }
             }
-            Expr::VariantConstr((x, arg)) => {
-                if let Some(arg) = arg {
+            Expr::VariantConstr(x) => {
+                if let Some(arg) = &x.value {
                     let arg = self.eval(arg)?;
-                    Ok(Value::Variant((x.clone(), Some(Box::new(arg)))))
+                    Ok(Value::Variant((x.constr.clone(), Some(Box::new(arg)))))
                 } else {
                     // Value::Variant((Symbol, Option<Box<Value>>))
                     todo!()
@@ -458,10 +458,10 @@ impl Interpreter {
                         Some(_) => Value::Function {
                             func: Function {
                                 bind: Pattern::Symbol(sym("a")),
-                                expr: Box::new(Expr::VariantConstr((
-                                    v.constr.clone(),
-                                    Some(Box::new(Expr::Symbol(sym("a")))),
-                                ))),
+                                expr: Box::new(Expr::VariantConstr(Variant {
+                                    constr: v.constr.clone(),
+                                    value: Some(Box::new(Expr::Symbol(sym("a")))),
+                                })),
                             },
                             context: self.current_ctx().clone(),
                         },
