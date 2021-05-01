@@ -31,7 +31,7 @@ fn main() {
 type Option a = Some a | None
 
 let map f = \\x -> match x with
-    Some x -> Some (f x),
+    Some y -> Some (f y),
     None -> None
 
 rec fact n =

@@ -74,7 +74,6 @@ impl SymbolTypeContext {
                 }
                 Statement::CustomType(t) => {
                     let ty = Type::Custom(t.type_.clone());
-                    // println!("generalized {} to {}", t.type_, ty.type_);
                     for v in &t.variants {
                         let ty = TypeScheme {
                             type_: match &v.contained_type {
@@ -113,19 +112,29 @@ impl SymbolTypeContext {
                 Some(x) => Ok(x.instantiate(gen)),
                 None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
                     Some((_, x)) => Ok(x.clone()),
-                    None => panic!("???: {}", x),
+                    None => todo!("???: {}", x),
                 },
             },
-            Expr::VariantConstr((x, arg)) => {
-                // TODO: handle arg too
-                match self.global_symbol_type_map.get(x) {
-                    Some(x) => Ok(x.instantiate(gen)),
-                    None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
-                        Some((_, x)) => Ok(x.clone()),
-                        None => panic!("???: {}", x),
-                    },
+            Expr::VariantConstr((x, arg)) => match self.global_symbol_type_map.get(x) {
+                Some(x) => {
+                    let arg_t = match arg {
+                        None => None,
+                        Some(x) => Some(self.infer_expr(gen, scope_bindings, subst, &*x)),
+                    };
+                    match (&x.type_, arg_t) {
+                        (Type::Func(func_t), Some(arg_t)) => {
+                            let arg_t = arg_t?;
+                            subst.unify(func_t.return_.clone(), arg_t)?;
+                        }
+                        _ => todo!("this should be an error?"),
+                    };
+                    Ok(x.instantiate(gen))
                 }
-            }
+                None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
+                    Some((_, x)) => Ok(x.clone()),
+                    None => todo!("???: {}", x),
+                },
+            },
             Expr::Function(x) => {
                 let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);
@@ -320,7 +329,7 @@ impl Substitution {
 
     fn bind_symbol(&mut self, v: VariableType, t: Type) {
         if t.vars().contains(&v) {
-            panic!("AAaaaaaaa");
+            todo!("contains check failed");
         }
         self.insert(v, t);
     }

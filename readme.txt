@@ -1,6 +1,6 @@
 TODO
 
-Some bugs related to custom types in interpreter and type reconstructor
+Some bugs related to custom types in type reconstructor
 
 
 

@@ -417,7 +417,11 @@ impl Interpreter {
                 let value = self.eval(&x.expr)?;
                 for c in &x.cases {
                     if value.matches(&c.pattern) {
+                        self.current_ctx_enter(&c.pattern);
+                        self.current_ctx_mut().bind(&c.pattern, value)?;
                         val = Some(self.eval(&*c.expr)?);
+                        self.current_ctx_mut().exit_ctx();
+                        break;
                     }
                 }
                 let val = match val {

@@ -107,7 +107,7 @@ impl fmt::Display for VariantPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.constr)?;
         if let Some(contained_pattern) = &self.contained_pattern {
-            write!(f, "{}", contained_pattern)?;
+            write!(f, " {}", contained_pattern)?;
         }
         Ok(())
     }
