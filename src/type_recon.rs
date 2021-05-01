@@ -106,15 +106,9 @@ impl SymbolTypeContext {
             Expr::Literal(Literal::Bool(_)) => Ok(Type::Intrinsic(IntrinsicType::Bool)),
             Expr::Literal(Literal::Int(_)) => Ok(Type::Intrinsic(IntrinsicType::Int)),
             Expr::Symbol(x) => match self.global_symbol_type_map.get(x) {
-                Some(t) => {
-                    println!(" symbol {} : {}", x, t);
-                    Ok(t.instantiate(gen))
-                }
+                Some(t) => Ok(t.instantiate(gen)),
                 None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
-                    Some((_, t)) => {
-                        println!(" symbol {} : {}", x, t);
-                        Ok(t.clone())
-                    }
+                    Some((_, t)) => Ok(t.clone()),
                     None => todo!("undefined symbol: {}", x),
                 },
             },
@@ -128,9 +122,8 @@ impl SymbolTypeContext {
                         match (constr_t.instantiate(gen), arg_t) {
                             (Type::Func(func_t), Some(arg_t)) => {
                                 let arg_t = arg_t?;
-                                println!("unifying2 {} and {}", func_t.arg, arg_t);
                                 subst.unify(func_t.arg.clone(), arg_t)?;
-                                Ok(func_t.return_)
+                                Ok(subst.apply(func_t.return_))
                             }
                             (t, None) => Ok(t),
                             (x, y) => todo!("this should be an error?\n {:?}\n {:?}", x, y),
@@ -159,7 +152,8 @@ impl SymbolTypeContext {
                         return_: return_t.clone(),
                     })),
                 )?;
-                Ok(subst.apply(return_t))
+                let t = subst.apply(return_t);
+                Ok(t)
             }
             Expr::IfElse(x) => {
                 let expr = self.infer_expr(gen, scope_bindings, subst, &x.expr)?;
@@ -176,16 +170,18 @@ impl SymbolTypeContext {
                 for case in &x.cases {
                     let (pattern_t, n) =
                         self.infer_pattern(gen, scope_bindings, subst, &case.pattern)?;
-                    println!("unifying1 {} and {}", pattern_t, expr_t);
                     if let Err(e) = subst.unify(pattern_t, expr_t.clone()) {
                         Self::remove_n_bindings(scope_bindings, n);
                         return Err(e);
                     };
                     let expr_t = self.infer_expr(gen, scope_bindings, subst, &case.expr);
                     Self::remove_n_bindings(scope_bindings, n);
-                    subst.unify(return_.clone(), subst.apply(expr_t?))?;
+                    let expr_t = subst.apply(expr_t?);
+                    subst.unify(return_.clone(), expr_t)?;
+                    print_subst(subst);
                 }
-                Ok(subst.apply(return_))
+                let t = subst.apply(return_);
+                Ok(t)
             }
             Expr::Let(x) => {
                 let (bind_t, bind_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
@@ -332,11 +328,17 @@ impl Substitution {
         }
     }
 
-    fn bind_symbol(&mut self, v: VariableType, t: Type) {
+    fn bind_symbol(&mut self, v: VariableType, t: Type) -> Result<(), Error> {
         if t.vars().contains(&v) {
             todo!("contains check failed");
         }
-        self.insert(v, t);
+        if let Some(old_t) = self.subs.get(&v).cloned() {
+            self.unify(t.clone(), old_t)?;
+            self.insert(v, self.apply(t));
+        } else {
+            self.insert(v, t);
+        }
+        Ok(())
     }
 
     fn unify(&mut self, t1: Type, t2: Type) -> Result<(), Error> {
@@ -344,14 +346,8 @@ impl Substitution {
             return Ok(());
         }
         match (t1, t2) {
-            (Type::Var(t1), t2) => {
-                self.bind_symbol(t1, t2);
-                Ok(())
-            }
-            (t1, Type::Var(t2)) => {
-                self.bind_symbol(t2, t1);
-                Ok(())
-            }
+            (Type::Var(t1), t2) => self.bind_symbol(t1, t2),
+            (t1, Type::Var(t2)) => self.bind_symbol(t2, t1),
             (Type::Func(t1), Type::Func(t2)) => {
                 self.unify(t1.arg.clone(), t2.arg.clone())?;
                 self.unify(t1.return_.clone(), t2.return_.clone())?;
@@ -380,4 +376,12 @@ impl Substitution {
             (t1, t2) => Err(Error::TypeMismatch((t1, t2))),
         }
     }
+}
+
+fn print_subst(subst: &Substitution) {
+    print!("subst: {{");
+    for (k, v) in &subst.subs {
+        print!("{} = {}, ", k, v);
+    }
+    println!("}}");
 }

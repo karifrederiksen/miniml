@@ -29,6 +29,10 @@ fn main() {
         let src: &str = "
 type Option a = Some a | None
 
+
+let incr : Int -> Int
+let incr = add 1
+
 let map f = \\x -> match x with
     Some y -> Some (f y),
     None -> None
@@ -40,9 +44,6 @@ rec fact n =
         mul n (fact (sub n 1))
 
 let x = Some 1
-
-let incr : Int -> Int
-let incr = add 1
 
 let incr_opt = map incr
 
