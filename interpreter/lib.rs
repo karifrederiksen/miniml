@@ -36,7 +36,14 @@ impl fmt::Debug for Value {
                 }
                 write!(f, ")")
             }
-            Self::Function { func, context: _ } => {
+            Self::Function { func, context } => {
+                let mut func = func.clone();
+                let bindings: HashMap<Symbol, Expr> = context
+                    .bindings()
+                    .into_iter()
+                    .map(|(k, v)| (k, v.as_expr()))
+                    .collect();
+                func.replace_symbols(&bindings);
                 write!(f, "{:?}", func)
             }
             Self::Variant((ty, sym)) => {
@@ -53,6 +60,23 @@ impl fmt::Debug for Value {
     }
 }
 impl Value {
+    fn as_expr(&self) -> Expr {
+        match self {
+            Value::Literal(val) => Expr::Literal(val.clone()),
+            Value::Function { func, context: _ } => Expr::Function(func.clone()),
+            Value::Intrinsic(x) => Expr::Symbol(x.clone()),
+            Value::Tuple(values) => {
+                Expr::Tuple(Tuple(values.iter().map(|val| val.as_expr()).collect()))
+            }
+            Value::Variant((constr, val)) => Expr::VariantConstr(Variant {
+                constr: constr.clone(),
+                value: match val {
+                    Some(val) => Some(Box::new(val.as_expr())),
+                    None => None,
+                },
+            }),
+        }
+    }
     fn matches(&self, pat: &Pattern) -> bool {
         match (pat, self) {
             (Pattern::Symbol(_), _) => true,
@@ -111,6 +135,22 @@ impl ExecutionContext {
             ctx = &*prev;
         }
         stack
+    }
+
+    pub fn bindings(&self) -> HashMap<Symbol, Value> {
+        let mut bindings = self.bindings.clone();
+        let mut stack = &self.previous;
+
+        while let Some(ctx) = &stack {
+            for (k, v) in ctx.bindings() {
+                if !bindings.contains_key(&k) {
+                    bindings.insert(k, v);
+                }
+            }
+            stack = &ctx.previous;
+        }
+
+        bindings
     }
 
     pub fn find<'a>(&'a self, name: &Symbol) -> Option<&'a Value> {

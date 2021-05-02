@@ -153,6 +153,55 @@ impl fmt::Debug for Function {
     }
 }
 
+impl Function {
+    pub fn replace_symbols(&mut self, symbols: &HashMap<Symbol, Expr>) {
+        Self::replace_bound_expr(&mut self.expr, symbols);
+    }
+
+    fn replace_bound_expr(e: &mut Expr, symbols: &HashMap<Symbol, Expr>) {
+        match e {
+            Expr::Symbol(x) => {
+                if let Some(val) = symbols.get(x) {
+                    *e = val.clone();
+                }
+            }
+            Expr::VariantConstr(x) => {
+                if let Some(val) = &mut x.value {
+                    Self::replace_bound_expr(val, symbols);
+                }
+            }
+            Expr::Literal(_) => (),
+            Expr::Function(x) => {
+                Self::replace_bound_expr(&mut x.expr, symbols);
+            }
+            Expr::Let(x) => {
+                Self::replace_bound_expr(&mut x.bind_expr, symbols);
+                Self::replace_bound_expr(&mut x.next_expr, symbols);
+            }
+            Expr::Appl(x) => {
+                Self::replace_bound_expr(&mut x.arg, symbols);
+                Self::replace_bound_expr(&mut x.func, symbols);
+            }
+            Expr::IfElse(x) => {
+                Self::replace_bound_expr(&mut x.expr, symbols);
+                Self::replace_bound_expr(&mut x.case_true, symbols);
+                Self::replace_bound_expr(&mut x.case_false, symbols);
+            }
+            Expr::Tuple(x) => {
+                for e in x.0.iter_mut() {
+                    Self::replace_bound_expr(e, symbols);
+                }
+            }
+            Expr::Match(x) => {
+                Self::replace_bound_expr(&mut x.expr, symbols);
+                for c in x.cases.iter_mut() {
+                    Self::replace_bound_expr(&mut c.expr, symbols);
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Let {
     pub recursive: bool,
