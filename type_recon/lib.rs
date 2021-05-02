@@ -111,7 +111,7 @@ impl SymbolTypeContext {
                 Some(t) => Ok(t.instantiate(gen)),
                 None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
                     Some((_, t)) => Ok(t.clone()),
-                    None => todo!("undefined symbol: {}", x),
+                    None => todo!("undefined symbol: {:?}", x),
                 },
             },
             Expr::VariantConstr(Variant { constr, value }) => {
@@ -131,7 +131,7 @@ impl SymbolTypeContext {
                             (x, y) => todo!("this should be an error?\n {:?}\n {:?}", x, y),
                         }
                     }
-                    None => todo!("undefined variant constructor: {}", constr),
+                    None => todo!("undefined variant constructor: {:?}", constr),
                 }
             }
             Expr::Function(x) => {
@@ -257,16 +257,15 @@ impl SymbolTypeContext {
     }
 }
 
-#[derive(Debug)]
 struct Substitution {
     subs: HashMap<VariableType, Type>,
 }
 
-impl fmt::Display for Substitution {
+impl fmt::Debug for Substitution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{ ")?;
         for (k, v) in &self.subs {
-            write!(f, "{} => {}, ", k, v)?;
+            write!(f, "{:?} => {:?}, ", k, v)?;
         }
         write!(f, "}}")?;
         Ok(())
@@ -377,12 +376,4 @@ impl Substitution {
             (t1, t2) => Err(Error::TypeMismatch((t1, t2))),
         }
     }
-}
-
-fn print_subst(subst: &Substitution) {
-    print!("subst: {{");
-    for (k, v) in &subst.subs {
-        print!("{} = {}, ", k, v);
-    }
-    println!("}}");
 }

@@ -8,7 +8,7 @@ use std::rc::Rc;
 //   https://betterprogramming.pub/execution-context-lexical-environment-and-closures-in-javascript-b57c979341a5
 //   https://medium.com/@5066aman/lexical-environment-the-hidden-part-to-understand-closures-71d60efac0e0
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Value {
     Literal(Literal),
     Tuple(Vec<Value>),
@@ -20,34 +20,34 @@ pub enum Value {
     Intrinsic(Symbol),
 }
 
-impl fmt::Display for Value {
+impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Literal(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::Tuple(xs) => {
                 write!(f, "(")?;
                 for x in xs.iter().take(1) {
-                    write!(f, "{}", x)?;
+                    write!(f, "{:?}", x)?;
                 }
                 for x in xs.iter().skip(1) {
-                    write!(f, ", {}", x)?;
+                    write!(f, ", {:?}", x)?;
                 }
                 write!(f, ")")
             }
             Self::Function { func, context: _ } => {
-                write!(f, "{}", func)
+                write!(f, "{:?}", func)
             }
             Self::Variant((ty, sym)) => {
-                write!(f, "{}", ty)?;
+                write!(f, "{:?}", ty)?;
                 if let Some(sym) = sym {
-                    write!(f, " {}", sym)?;
+                    write!(f, " {:?}", sym)?;
                 }
                 Ok(())
             }
             Self::Intrinsic(sym) => {
-                write!(f, "{}", sym)
+                write!(f, "{:?}", sym)
             }
         }
     }
@@ -86,7 +86,7 @@ impl fmt::Display for ExecutionContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let stack = self.stack();
         for &name in stack.iter() {
-            write!(f, "  {}: ", name)?;
+            write!(f, "  {:?}: ", name)?;
             writeln!(f)?;
         }
         Ok(())
@@ -152,7 +152,7 @@ impl ExecutionContext {
                     unreachable!("I think this is supposed to be handled earlier")
                 }
             }
-            (pat, val) => panic!("mismatch between pattern {} and value {}", pat, val),
+            (pat, val) => panic!("mismatch between pattern {:?} and value {:?}", pat, val),
         }
     }
 
@@ -399,7 +399,7 @@ impl Interpreter {
                         self.execution_contexts.pop();
                         e
                     }
-                    _ => panic!("expected function, found: {}", func),
+                    _ => panic!("expected function, found: {:?}", func),
                 }
             }
             Expr::Tuple(x) => {

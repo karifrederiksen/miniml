@@ -21,7 +21,7 @@ fn main() {
             Ok(()) => {}
             Err(Error::TupleArityMismatch) => println!("arity mismatch"),
             Err(Error::TypeMismatch((t1, t2))) => {
-                println!("type mismatch between {} and {}", t1, t2)
+                println!("type mismatch between {:?} and {:?}", t1, t2)
             }
         };
     }
@@ -33,16 +33,16 @@ fn main() {
             let msg = match &e.kind {
                 ErrorKind::DepthLimitReached => "stack overflow".to_owned(),
                 ErrorKind::TypeMismatch((expected, found)) => format!(
-                    "type mismatch: expected something of type {} and found value {}",
+                    "type mismatch: expected something of type {:?} and found value {:?}",
                     expected, found
                 ),
                 ErrorKind::UndefinedSymbol(sym) => {
-                    format!("symbol used before declaration: {}", sym)
+                    format!("symbol used before declaration: {:?}", sym)
                 }
             };
             println!("Evaluation error: {}", msg);
             for x in e.stack {
-                println!("  {}", x);
+                println!("  {:?}", x);
             }
             return;
         }
@@ -50,7 +50,7 @@ fn main() {
     };
     match interp.current_ctx().find(&Symbol("main".to_owned())) {
         Some(main) => {
-            println!("{}\n\n", main);
+            println!("{:?}\n\n", main);
         }
         None => {
             println!("no main found\n\n");

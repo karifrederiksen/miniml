@@ -2,13 +2,13 @@ use prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Literal {
     Bool(bool),
     Int(i128),
 }
 
-impl fmt::Display for Literal {
+impl fmt::Debug for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bool(true) => {
@@ -24,107 +24,107 @@ impl fmt::Display for Literal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TuplePattern(pub Vec<Pattern>);
 
-impl fmt::Display for TuplePattern {
+impl fmt::Debug for TuplePattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         for e in self.0.iter().take(1) {
-            write!(f, "{}", e)?;
+            write!(f, "{:?}", e)?;
         }
         for e in self.0.iter().skip(1) {
-            write!(f, ", {}", e)?;
+            write!(f, ", {:?}", e)?;
         }
         write!(f, ")")
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VariantDefinition {
     pub constr: Symbol,
     pub contained_type: Option<Type>,
 }
-impl fmt::Display for VariantDefinition {
+impl fmt::Debug for VariantDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.constr)?;
+        write!(f, "{:?}", self.constr)?;
         if let Some(contained_type) = &self.contained_type {
-            write!(f, " {}", contained_type)?;
+            write!(f, " {:?}", contained_type)?;
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Variant {
     pub constr: Symbol,
     pub value: Option<Box<Expr>>,
 }
-impl fmt::Display for Variant {
+impl fmt::Debug for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.constr)?;
+        write!(f, "{:?}", self.constr)?;
         if let Some(val) = &self.value {
-            write!(f, " {}", val)?;
+            write!(f, " {:?}", val)?;
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CustomTypeSymbol(pub String);
 
-impl fmt::Display for CustomTypeSymbol {
+impl fmt::Debug for CustomTypeSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct CustomTypeDefinition {
     pub type_: CustomType,
     pub variants: Vec<VariantDefinition>,
 }
-impl fmt::Display for CustomTypeDefinition {
+impl fmt::Debug for CustomTypeDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "type {}", self.type_)?;
+        writeln!(f, "type {:?}", self.type_)?;
         for v in self.variants.iter().take(1) {
-            writeln!(f, "    = {}", v)?;
+            writeln!(f, "    = {:?}", v)?;
         }
         for v in self.variants.iter().skip(1) {
-            writeln!(f, "    | {}", v)?;
+            writeln!(f, "    | {:?}", v)?;
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VariantPattern {
     pub constr: Symbol,
     pub contained_pattern: Option<Box<Pattern>>,
 }
 
-impl fmt::Display for VariantPattern {
+impl fmt::Debug for VariantPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.constr)?;
+        write!(f, "{:?}", self.constr)?;
         if let Some(contained_pattern) = &self.contained_pattern {
-            write!(f, " {}", contained_pattern)?;
+            write!(f, " {:?}", contained_pattern)?;
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Pattern {
     Symbol(Symbol),
     Tuple(TuplePattern),
     Variant(VariantPattern),
 }
-impl fmt::Display for Pattern {
+impl fmt::Debug for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Symbol(x) => write!(f, "{}", x),
-            Self::Tuple(x) => write!(f, "{}", x),
-            Self::Variant(x) => write!(f, "{}", x),
+            Self::Symbol(x) => write!(f, "{:?}", x),
+            Self::Tuple(x) => write!(f, "{:?}", x),
+            Self::Variant(x) => write!(f, "{:?}", x),
         }
     }
 }
@@ -141,19 +141,19 @@ impl Pattern {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Function {
     pub bind: Pattern,
     pub expr: Box<Expr>,
 }
 
-impl fmt::Display for Function {
+impl fmt::Debug for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(\\{} -> {})", self.bind, self.expr)
+        write!(f, "(\\{:?} -> {:?})", self.bind, self.expr)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Let {
     pub recursive: bool,
     pub bind: Pattern,
@@ -161,11 +161,11 @@ pub struct Let {
     pub next_expr: Box<Expr>,
 }
 
-impl fmt::Display for Let {
+impl fmt::Debug for Let {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} = {} in {}",
+            "{} {:?} = {:?} in {:?}",
             (if self.recursive { "rec" } else { "let" }),
             self.bind,
             self.bind_expr,
@@ -174,76 +174,77 @@ impl fmt::Display for Let {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Appl {
     pub func: Box<Expr>,
     pub arg: Box<Expr>,
 }
 
-impl fmt::Display for Appl {
+impl fmt::Debug for Appl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} {})", self.func, self.arg)?;
+        write!(f, "({:?} {:?})", self.func, self.arg)?;
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct IfElse {
     pub expr: Box<Expr>,
     pub case_true: Box<Expr>,
     pub case_false: Box<Expr>,
 }
 
-impl fmt::Display for IfElse {
+impl fmt::Debug for IfElse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "if {} then {} else {}",
+            "if {:?} then {:?} else {:?}",
             self.expr, self.case_true, self.case_false
         )
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Tuple(pub Vec<Expr>);
-impl fmt::Display for Tuple {
+
+impl fmt::Debug for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         for e in self.0.iter().take(1) {
-            write!(f, "{}", e)?;
+            write!(f, "{:?}", e)?;
         }
         for e in self.0.iter().skip(1) {
-            write!(f, ", {}", e)?;
+            write!(f, ", {:?}", e)?;
         }
         write!(f, ")")
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Match {
     pub expr: Box<Expr>,
     pub cases: Vec<MatchCase>,
 }
-impl fmt::Display for Match {
+impl fmt::Debug for Match {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "match {} with", self.expr)?;
+        write!(f, "match {:?} with", self.expr)?;
         for c in self.cases.iter().take(1) {
-            write!(f, "{} -> {}", c.pattern, c.expr)?;
+            write!(f, "{:?} -> {:?}", c.pattern, c.expr)?;
         }
         for c in self.cases.iter().skip(1) {
-            write!(f, ", {} -> {}", c.pattern, c.expr)?;
+            write!(f, ", {:?} -> {:?}", c.pattern, c.expr)?;
         }
         write!(f, ")")
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct MatchCase {
     pub pattern: Pattern,
     pub expr: Box<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Expr {
     Symbol(Symbol),
     VariantConstr(Variant),
@@ -256,69 +257,69 @@ pub enum Expr {
     Match(Match),
 }
 
-impl fmt::Display for Expr {
+impl fmt::Debug for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Symbol(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::VariantConstr(x) => {
-                write!(f, "{}", x.constr)?;
+                write!(f, "{:?}", x.constr)?;
                 if let Some(arg) = &x.value {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {:?}", arg)?;
                 }
                 Ok(())
             }
             Self::Literal(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::Function(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::Let(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::Appl(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::IfElse(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::Tuple(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
             Self::Match(x) => {
-                write!(f, "{}", x)
+                write!(f, "{:?}", x)
             }
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SymbolBinding {
     pub recursive: bool,
     pub bind: Symbol,
     pub type_: Option<TypeScheme>,
     pub expr: Expr,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Statement {
     SymbolBinding(SymbolBinding),
     CustomType(CustomTypeDefinition),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Module {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntrinsicType {
     Bool,
     Int,
 }
 
-impl fmt::Display for IntrinsicType {
+impl fmt::Debug for IntrinsicType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bool => {
@@ -331,22 +332,22 @@ impl fmt::Display for IntrinsicType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunctionType {
     pub arg: Type,
     pub return_: Type,
 }
 
-impl fmt::Display for FunctionType {
+impl fmt::Debug for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} -> {})", self.arg, self.return_)
+        write!(f, "({:?} -> {:?})", self.arg, self.return_)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct VariableType(pub String);
 
-impl fmt::Display for VariableType {
+impl fmt::Debug for VariableType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -372,40 +373,40 @@ impl VariableTypeGenerator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TupleType(pub Vec<Type>);
 
-impl fmt::Display for TupleType {
+impl fmt::Debug for TupleType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         for e in self.0.iter().take(1) {
-            write!(f, "{}", e)?;
+            write!(f, "{:?}", e)?;
         }
         for e in self.0.iter().skip(1) {
-            write!(f, ", {}", e)?;
+            write!(f, ", {:?}", e)?;
         }
         write!(f, ")")
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CustomType {
     pub name: CustomTypeSymbol,
     pub variables: Vec<Type>,
 }
-impl fmt::Display for CustomType {
+impl fmt::Debug for CustomType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)?;
+        write!(f, "{:?}", self.name)?;
         if !self.variables.is_empty() {
             for v in &self.variables {
-                write!(f, " {}", v)?;
+                write!(f, " {:?}", v)?;
             }
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Type {
     Intrinsic(IntrinsicType),
     Func(Box<FunctionType>),
@@ -414,14 +415,14 @@ pub enum Type {
     Custom(CustomType),
 }
 
-impl fmt::Display for Type {
+impl fmt::Debug for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Intrinsic(x) => write!(f, "{}", x),
-            Self::Func(x) => write!(f, "{}", x),
-            Self::Var(x) => write!(f, "{}", x),
-            Self::Tuple(x) => write!(f, "{}", x),
-            Self::Custom(x) => write!(f, "{}", x),
+            Self::Intrinsic(x) => write!(f, "{:?}", x),
+            Self::Func(x) => write!(f, "{:?}", x),
+            Self::Var(x) => write!(f, "{:?}", x),
+            Self::Tuple(x) => write!(f, "{:?}", x),
+            Self::Custom(x) => write!(f, "{:?}", x),
         }
     }
 }
@@ -493,12 +494,12 @@ impl Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TypeScheme {
     pub type_: Type,
 }
 
-impl fmt::Display for TypeScheme {
+impl fmt::Debug for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vars = self.type_.vars();
         if !vars.is_empty() {
@@ -509,14 +510,14 @@ impl fmt::Display for TypeScheme {
                 .collect();
             write!(f, "forall ")?;
             for (_, v) in &replacements {
-                write!(f, "{} ", v)?;
+                write!(f, "{:?} ", v)?;
             }
             let mut t = self.type_.clone();
             let replacements: HashMap<VariableType, Type> = replacements.into_iter().collect();
             t.replace(&replacements);
-            write!(f, "=> {}", t)
+            write!(f, "=> {:?}", t)
         } else {
-            write!(f, "{}", self.type_)
+            write!(f, "{:?}", self.type_)
         }
     }
 }
@@ -553,7 +554,11 @@ impl Printer {
     fn print(&mut self, expr: &Expr) {
         match expr {
             Expr::Literal(x) => {
-                let s = format!("{}", x);
+                let s = match x {
+                    Literal::Bool(true) => "True".to_owned(),
+                    Literal::Bool(false) => "False".to_owned(),
+                    Literal::Int(n) => format!("{}", n),
+                };
                 self.print_str(&s);
             }
             Expr::Symbol(x) => {
@@ -606,7 +611,7 @@ impl Printer {
                 }
                 self.space();
 
-                self.print_str(&format!("{}", x.bind));
+                self.print_str(&format!("{:?}", x.bind));
                 self.space();
                 self.print_str("=");
                 self.indent_incr();
@@ -618,7 +623,7 @@ impl Printer {
             }
             Expr::Function(x) => {
                 self.print_str("(\\");
-                self.print_str(&format!("{}", x.bind));
+                self.print_str(&format!("{:?}", x.bind));
                 self.space();
                 self.print_str("->");
                 self.indent_incr();
@@ -632,7 +637,7 @@ impl Printer {
                 self.print_str(" with");
                 self.indent_incr();
                 for c in &x.cases {
-                    self.print_str(&format!("{}", c.pattern));
+                    self.print_str(&format!("{:?}", c.pattern));
                     self.space();
                     self.print_str("->");
                     self.space();
@@ -655,7 +660,7 @@ impl Printer {
                     self.space();
                     self.print_str(":");
                     self.space();
-                    self.print_str(&format!("{}", type_));
+                    self.print_str(&format!("{:?}", type_));
                     self.newline();
                 }
                 self.print_str(decl_sym);
@@ -667,7 +672,7 @@ impl Printer {
                 self.print(&st.expr);
             }
             Statement::CustomType(t) => {
-                self.print_str(&format!("{}", t));
+                self.print_str(&format!("{:?}", t));
             }
         }
     }
