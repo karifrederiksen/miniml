@@ -5,6 +5,7 @@ extern crate test;
 
 pub mod ast;
 mod interpreter;
+mod lexer;
 mod parser;
 pub mod prelude;
 mod type_recon;

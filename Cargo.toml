@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 rpds = "0.9"
+logos = "0.12"
 nom = "6.1.2"
