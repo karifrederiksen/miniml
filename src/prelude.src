@@ -1,0 +1,7 @@
+let eq l = \r -> intrinsic_eq (l, r)
+let add l = \r -> intrinsic_add (l, r)
+let sub l = \r -> intrinsic_sub (l, r)
+let mul l = \r -> intrinsic_mul (l, r)
+let not = intrinsic_not
+let and l = \r -> intrinsic_and (l, r)
+let or l = \r -> intrinsic_or (l, r)

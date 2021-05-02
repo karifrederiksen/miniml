@@ -1,0 +1,10 @@
+[package]
+name = "ast"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+prelude = { path = "../prelude" }

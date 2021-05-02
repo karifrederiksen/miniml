@@ -1,8 +1,10 @@
-use crate::ast::*;
-use crate::prelude::{sym, Symbol};
-use std::collections::{HashMap, HashSet};
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+use ast::*;
+use prelude::{sym, Symbol};
+use std::collections::HashMap;
 use std::fmt;
-use std::iter::FromIterator;
 
 #[derive(Clone, Debug)]
 pub enum Error {

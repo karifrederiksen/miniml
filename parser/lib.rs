@@ -9,8 +9,8 @@ use nom::multi;
 use nom::sequence as seq;
 use nom::IResult;
 
-use crate::ast::*;
-use crate::prelude::{sym, Symbol};
+use ast::*;
+use prelude::{sym, Symbol};
 
 const RESERVED_CAMELCASE_SYMBOLS: [&'static str; 4] = ["Int", "Bool", "True", "False"];
 
@@ -437,7 +437,6 @@ fn parse_symbol_binding_statement<'a>(s: &'a str) -> IResult<&'a str, Statement>
 }
 
 fn parse_custom_type<'a>(s: &'a str) -> IResult<&'a str, CustomType> {
-    use std::iter::FromIterator;
     let mut p = seq::tuple((
         map(parse_camelcase_symbol, |s| CustomTypeSymbol(s.0)),
         branch::alt((
@@ -521,19 +520,6 @@ fn parse_intrinsic_type(s: &str) -> IResult<&str, Type> {
         map(tag("Bool"), |_| Type::Intrinsic(IntrinsicType::Bool)),
         map(tag("Int"), |_| Type::Intrinsic(IntrinsicType::Int)),
     ));
-    p(s)
-}
-
-fn parse_func_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
-    let mut p = map(
-        seq::tuple((
-            parse_type,
-            seq::tuple((space_lf0, tag("->"), space_lf0)),
-            parse_type,
-        )),
-        |(arg, _, return_)| Type::Func(Box::new(FunctionType { arg, return_ })),
-    );
-
     p(s)
 }
 

@@ -1,0 +1,12 @@
+[package]
+name = "lexer"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+prelude = { path = "../prelude" }
+ast = { path = "../ast" }
+logos = "0.12"
