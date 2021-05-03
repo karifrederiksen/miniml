@@ -558,13 +558,16 @@ impl fmt::Debug for TypeScheme {
                 .map(|(n, key)| (key, Type::Var(VariableType(u32_to_ascii((n + 1) as u32)))))
                 .collect();
             write!(f, "forall ")?;
-            for (_, v) in &replacements {
-                write!(f, "{:?} ", v)?;
+            for (_, v) in replacements.iter().take(1) {
+                write!(f, "{:?}", v)?;
+            }
+            for (_, v) in replacements.iter().skip(1) {
+                write!(f, ", {:?}", v)?;
             }
             let mut t = self.type_.clone();
             let replacements: HashMap<VariableType, Type> = replacements.into_iter().collect();
             t.replace(&replacements);
-            write!(f, "=> {:?}", t)
+            write!(f, " . {:?}", t)
         } else {
             write!(f, "{:?}", self.type_)
         }
