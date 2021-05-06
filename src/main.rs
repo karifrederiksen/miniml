@@ -23,6 +23,9 @@ fn main() {
             Err(Error::TypeMismatch((t1, t2))) => {
                 println!("type mismatch between {:?} and {:?}", t1, t2)
             }
+            Err(Error::NonExhaustiveMatch) => {
+                println!("non-exhaustive match detected")
+            }
         };
     }
     println!("{}\n\n", ast::print_module(&module));

@@ -1,6 +1,5 @@
 TODO:
 
-* Exhaustiveness check for patterns
 * Replace panics with Error variants
 
 ==============

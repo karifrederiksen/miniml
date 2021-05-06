@@ -8,18 +8,21 @@ use std::fmt;
 
 #[derive(Clone, Debug)]
 pub enum Error {
+    NonExhaustiveMatch,
     TypeMismatch((Type, Type)),
     TupleArityMismatch,
 }
 
 pub struct SymbolTypeContext {
     global_symbol_type_map: HashMap<Symbol, TypeScheme>,
+    custom_types: HashMap<CustomTypeSymbol, Vec<VariantDefinition>>,
 }
 
 impl SymbolTypeContext {
     pub fn new() -> SymbolTypeContext {
         SymbolTypeContext {
             global_symbol_type_map: HashMap::new(),
+            custom_types: HashMap::new(),
         }
     }
 
@@ -73,6 +76,8 @@ impl SymbolTypeContext {
                 }
                 Statement::CustomType(t) => {
                     let ty = Type::Custom(t.type_.clone());
+                    self.custom_types
+                        .insert(t.type_.name.clone(), t.variants.clone());
                     for v in &t.variants {
                         let ty = TypeScheme {
                             type_: match &v.contained_type {
@@ -182,7 +187,11 @@ impl SymbolTypeContext {
                     subst.unify(return_.clone(), expr_t)?;
                 }
                 let t = subst.apply(return_);
-                Ok(t)
+                if !self.is_exhaustive(x, &t) {
+                    Err(Error::NonExhaustiveMatch)
+                } else {
+                    Ok(t)
+                }
             }
             Expr::Let(x) => {
                 let (bind_t, bind_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
@@ -255,6 +264,14 @@ impl SymbolTypeContext {
     fn remove_n_bindings(scope_bindings: &mut Vec<(Symbol, Type)>, n: usize) {
         scope_bindings.truncate(scope_bindings.len() - n);
     }
+
+    pub fn is_exhaustive(&self, m: &Match, expr_t: &Type) -> bool {
+        let mut t = TypeRefinement::from_type(&self.custom_types, expr_t);
+        for case in &m.cases {
+            t = t.refine(&case.pattern);
+        }
+        t == TypeRefinement::Unreachable
+    }
 }
 
 struct Substitution {
@@ -325,6 +342,7 @@ impl Substitution {
                 .iter()
                 .map(|(s, t_sch)| (s.clone(), self.apply_scheme(t_sch)))
                 .collect(),
+            custom_types: ctx.custom_types.clone(),
         }
     }
 
@@ -374,6 +392,101 @@ impl Substitution {
                 }
             }
             (t1, t2) => Err(Error::TypeMismatch((t1, t2))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TypeRefinement {
+    Unreachable,
+    Tuple(Vec<TypeRefinement>),
+    Variable,
+    Variant(Vec<(Symbol, TypeRefinement)>),
+}
+
+impl TypeRefinement {
+    pub fn from_type(
+        custom_types: &HashMap<CustomTypeSymbol, Vec<VariantDefinition>>,
+        ty: &Type,
+    ) -> Self {
+        match ty {
+            Type::Func(_) => Self::Variable,
+            Type::Var(_) => Self::Variable,
+            Type::Intrinsic(IntrinsicType::Bool) => Self::Variant(vec![
+                (sym("True"), Self::Unreachable),
+                (sym("False"), Self::Unreachable),
+            ]),
+            Type::Intrinsic(IntrinsicType::Int) => Self::Variable,
+            Type::Tuple(TupleType(ts)) => Self::Tuple(
+                ts.iter()
+                    .map(|x| Self::from_type(custom_types, x))
+                    .collect(),
+            ),
+            Type::Custom(CustomType { name, variables: _ }) => {
+                let variants = custom_types.get(name).unwrap();
+                Self::Variant(
+                    variants
+                        .iter()
+                        .map(|x: &VariantDefinition| {
+                            (
+                                x.constr.clone(),
+                                if let Some(contained_type) = &x.contained_type {
+                                    Self::from_type(custom_types, contained_type)
+                                } else {
+                                    Self::Unreachable
+                                },
+                            )
+                        })
+                        .collect(),
+                )
+            }
+        }
+    }
+
+    pub fn refine(self, pat: &Pattern) -> Self {
+        match (self, pat) {
+            (Self::Variable, Pattern::Symbol(_)) => Self::Unreachable,
+            (Self::Tuple(trs), Pattern::Tuple(TuplePattern(ts))) => {
+                let trs: Vec<Self> = trs
+                    .into_iter()
+                    .zip(ts.iter())
+                    .map(|(tr, p)| {
+                        if let Self::Unreachable = tr {
+                            Self::Unreachable
+                        } else {
+                            tr.refine(p)
+                        }
+                    })
+                    .collect();
+                if trs.iter().all(|x| *x == Self::Unreachable) {
+                    Self::Unreachable
+                } else {
+                    Self::Tuple(trs)
+                }
+            }
+            (Self::Variant(trs), Pattern::Variant(vs)) => {
+                let trs: Vec<(Symbol, Self)> = trs
+                    .into_iter()
+                    .filter_map(|(constr, tr)| {
+                        if constr.0 != vs.constr.0 {
+                            Some((constr, tr))
+                        } else if let Some(pat) = &vs.contained_pattern {
+                            match tr.refine(&*pat) {
+                                Self::Unreachable => None,
+                                x => Some((constr, x)),
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if trs.len() == 0 {
+                    Self::Unreachable
+                } else {
+                    Self::Variant(trs)
+                }
+            }
+            (x, _) => x,
         }
     }
 }
