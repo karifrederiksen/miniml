@@ -47,9 +47,10 @@ pub struct VariantDefinition {
 }
 impl fmt::Debug for VariantDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.constr)?;
         if let Some(contained_type) = &self.contained_type {
-            write!(f, " {:?}", contained_type)?;
+            write!(f, "({:?} {:?})", self.constr, contained_type)?;
+        } else {
+            write!(f, "{:?}", self.constr)?;
         }
         Ok(())
     }
@@ -62,9 +63,10 @@ pub struct Variant {
 }
 impl fmt::Debug for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.constr)?;
         if let Some(val) = &self.value {
-            write!(f, " {:?}", val)?;
+            write!(f, "({:?} {:?})", self.constr, val)?;
+        } else {
+            write!(f, "{:?}", self.constr)?;
         }
         Ok(())
     }
@@ -313,9 +315,10 @@ impl fmt::Debug for Expr {
                 write!(f, "{:?}", x)
             }
             Self::VariantConstr(x) => {
-                write!(f, "{:?}", x.constr)?;
                 if let Some(arg) = &x.value {
-                    write!(f, " {:?}", arg)?;
+                    write!(f, "({:?} {:?})", x.constr, arg)?;
+                } else {
+                    write!(f, "{:?}", x.constr)?;
                 }
                 Ok(())
             }
@@ -445,11 +448,14 @@ pub struct CustomType {
 }
 impl fmt::Debug for CustomType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.name)?;
         if !self.variables.is_empty() {
+            write!(f, "({:?}", self.name)?;
             for v in &self.variables {
                 write!(f, " {:?}", v)?;
             }
+            write!(f, ")")?;
+        } else {
+            write!(f, "{:?}", self.name)?;
         }
         Ok(())
     }
@@ -617,10 +623,14 @@ impl Printer {
                 self.print_str(&x.0);
             }
             Expr::VariantConstr(x) => {
-                self.print_str(&x.constr.0);
                 if let Some(arg) = &x.value {
+                    self.print_str("(");
+                    self.print_str(&x.constr.0);
                     self.space();
                     self.print(arg);
+                    self.print_str(")");
+                } else {
+                    self.print_str(&x.constr.0);
                 }
             }
             Expr::Appl(x) => {

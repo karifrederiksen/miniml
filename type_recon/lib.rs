@@ -273,7 +273,7 @@ impl SymbolTypeContext {
     pub fn is_exhaustive(&self, m: &Match, expr_t: &Type) -> bool {
         let mut t = TypeRefinement::from_type(&self.custom_types, expr_t);
         for case in &m.cases {
-            t = t.refine(&case.pattern);
+            t = t.refine(&self.custom_types, &case.pattern);
         }
         t == TypeRefinement::Unreachable
     }
@@ -401,18 +401,57 @@ impl Substitution {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum TypeRefinement {
+    Lazy(Type),
     Unreachable,
     Tuple(Vec<TypeRefinement>),
     Variable,
     Variant(Vec<(Symbol, TypeRefinement)>),
 }
 
+impl fmt::Debug for TypeRefinement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lazy(t) => write!(f, "Lazy({:?})", t),
+            Self::Unreachable => write!(f, "Unreachable"),
+            Self::Tuple(ts) => {
+                write!(f, "(")?;
+                for t in ts.iter().take(1) {
+                    write!(f, "{:?}", t)?;
+                }
+                for t in ts.iter().skip(1) {
+                    write!(f, ", {:?}", t)?;
+                }
+                write!(f, ")")
+            }
+            Self::Variable => write!(f, "Variable"),
+            Self::Variant(vs) => {
+                for (constr, r) in vs.iter().take(1) {
+                    write!(f, "{:?} {:?}", constr, r)?;
+                }
+                for (constr, r) in vs.iter().skip(1) {
+                    write!(f, " | {:?} {:?}", constr, r)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl TypeRefinement {
     pub fn from_type(
         custom_types: &HashMap<CustomTypeSymbol, Vec<VariantDefinition>>,
         ty: &Type,
+    ) -> Self {
+        let mut var_stack = Vec::new();
+        Self::from_type_help(custom_types, ty, &mut var_stack)
+    }
+
+    fn from_type_help(
+        custom_types: &HashMap<CustomTypeSymbol, Vec<VariantDefinition>>,
+        ty: &Type,
+        variant_stack: &mut Vec<CustomTypeSymbol>,
     ) -> Self {
         match ty {
             Type::Func(_) => Self::Variable,
@@ -422,35 +461,46 @@ impl TypeRefinement {
                 (sym("False"), Self::Unreachable),
             ]),
             Type::Intrinsic(IntrinsicType::Int) => Self::Variable,
-            Type::Tuple(TupleType(ts)) => Self::Tuple(
-                ts.iter()
-                    .map(|x| Self::from_type(custom_types, x))
-                    .collect(),
-            ),
-            Type::Custom(CustomType { name, variables: _ }) => {
-                let variants = custom_types.get(name).unwrap();
-                Self::Variant(
-                    variants
+            Type::Tuple(TupleType(ts)) => {
+                let ts = ts
+                    .iter()
+                    .map(|x| Self::from_type_help(custom_types, x, variant_stack))
+                    .collect();
+                Self::Tuple(ts)
+            }
+            Type::Custom(ct) => {
+                if variant_stack.contains(&&ct.name) {
+                    Self::Lazy(Type::Custom(ct.clone()))
+                } else {
+                    variant_stack.push(ct.name.clone());
+                    let variants = custom_types
+                        .get(&ct.name)
+                        .unwrap()
                         .iter()
                         .map(|x: &VariantDefinition| {
-                            (
-                                x.constr.clone(),
-                                if let Some(contained_type) = &x.contained_type {
-                                    Self::from_type(custom_types, contained_type)
-                                } else {
-                                    Self::Unreachable
-                                },
-                            )
+                            let t = if let Some(contained_type) = &x.contained_type {
+                                Self::from_type_help(custom_types, contained_type, variant_stack)
+                            } else {
+                                Self::Unreachable
+                            };
+                            (x.constr.clone(), t)
                         })
-                        .collect(),
-                )
+                        .collect();
+                    let v = Self::Variant(variants);
+                    variant_stack.pop();
+                    v
+                }
             }
         }
     }
 
-    pub fn refine(self, pat: &Pattern) -> Self {
+    pub fn refine(
+        self,
+        custom_types: &HashMap<CustomTypeSymbol, Vec<VariantDefinition>>,
+        pat: &Pattern,
+    ) -> Self {
         match (self, pat) {
-            (Self::Variable, Pattern::Symbol(_)) => Self::Unreachable,
+            (_, Pattern::Symbol(_)) => Self::Unreachable,
             (Self::Tuple(trs), Pattern::Tuple(TuplePattern(ts))) => {
                 let trs: Vec<Self> = trs
                     .into_iter()
@@ -459,7 +509,7 @@ impl TypeRefinement {
                         if let Self::Unreachable = tr {
                             Self::Unreachable
                         } else {
-                            tr.refine(p)
+                            tr.refine(custom_types, p)
                         }
                     })
                     .collect();
@@ -476,7 +526,7 @@ impl TypeRefinement {
                         if constr.0 != vs.constr.0 {
                             Some((constr, tr))
                         } else if let Some(pat) = &vs.contained_pattern {
-                            match tr.refine(&*pat) {
+                            match tr.refine(custom_types, &*pat) {
                                 Self::Unreachable => None,
                                 x => Some((constr, x)),
                             }
@@ -491,6 +541,7 @@ impl TypeRefinement {
                     Self::Variant(trs)
                 }
             }
+            (Self::Lazy(t), r) => Self::from_type(custom_types, &t).refine(custom_types, r),
             (x, _) => x,
         }
     }

@@ -47,9 +47,10 @@ impl fmt::Debug for Value {
                 write!(f, "{:?}", func)
             }
             Self::Variant((ty, sym)) => {
-                write!(f, "{:?}", ty)?;
                 if let Some(sym) = sym {
-                    write!(f, " {:?}", sym)?;
+                    write!(f, "({:?} {:?})", ty, sym)?;
+                } else {
+                    write!(f, "{:?}", ty)?;
                 }
                 Ok(())
             }
@@ -397,8 +398,7 @@ impl Interpreter {
                     let arg = self.eval(arg)?;
                     Ok(Value::Variant((x.constr.clone(), Some(Box::new(arg)))))
                 } else {
-                    // Value::Variant((Symbol, Option<Box<Value>>))
-                    todo!()
+                    Ok(Value::Variant((x.constr.clone(), None)))
                 }
             }
             Expr::IfElse(x) => match self.eval(&x.expr)? {

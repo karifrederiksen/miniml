@@ -1,8 +1,9 @@
 type Option a = Some a | None
 
-let map f = \x -> match x with
-    Some y -> Some (f y),
-    None -> None
+let opt_map f = \x ->
+    match x with
+        Some y -> Some (f y),
+        None -> None
 
 let incr : Int -> Int
 let incr = add 1
@@ -13,8 +14,19 @@ rec fact n =
     else
         mul n (fact (sub n 1))
 
-let x = Some 1
+type List a = Cons (a, List a) | Empty
 
-let incr_opt = map incr
+rec range from = \to ->
+    if gte to from then
+        Cons (to, (range from (sub to 1)))
+    else
+        Empty
 
-let main = (fact 6, incr_opt x)
+rec list_map f = \x ->
+    match x with
+        Cons (hd, tl) -> Cons (f hd, list_map f tl),
+        Empty -> Empty
+
+
+
+let main = (fact 6, opt_map (range 0) (Some 1))
