@@ -30,7 +30,11 @@ impl SymbolTypeContext {
         let t_a = Type::Var(VariableType("'a".to_owned()));
         let t_bool = Type::Intrinsic(IntrinsicType::Bool);
         let t_int = Type::Intrinsic(IntrinsicType::Int);
-        let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
+        let arity_1_intrinsics = vec![
+            ("not", (t_bool.clone(), t_bool.clone())),
+            ("print", (t_a.clone(), t_a.clone())),
+            ("println", (t_a.clone(), t_a.clone())),
+        ];
         let arity_2_intrinsics = vec![
             ("eq", (t_a.clone(), t_a.clone(), t_bool.clone())),
             ("neq", (t_a.clone(), t_a.clone(), t_bool.clone())),

@@ -336,6 +336,7 @@ impl Interpreter {
 
     #[inline]
     fn eval_intrinsic(sy: &Symbol, x: &Value) -> Result<Value, ErrorKind> {
+        use std::io::Write;
         match &sy.0[10..] {
             "eq" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
             "neq" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l != r))),
@@ -352,6 +353,18 @@ impl Interpreter {
             }
             "or" => Self::eval_intrinsic_bool_bool(x, |l, r| Value::Literal(Literal::Bool(l || r))),
             "not" => Self::eval_intrinsic_bool(x, |x| Value::Literal(Literal::Bool(!x))),
+            "print" => {
+                let h = std::io::stdout();
+                print!("{:?}", x);
+                h.lock().flush().unwrap();
+                Ok(x.clone())
+            }
+            "println" => {
+                let h = std::io::stdout();
+                println!("{:?}", x);
+                h.lock().flush().unwrap();
+                Ok(x.clone())
+            }
             _ => Err(ErrorKind::UndefinedSymbol(sy.clone())),
         }
     }
