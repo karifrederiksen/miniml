@@ -115,7 +115,7 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
             tag(","),
             seq::preceded(space_lf0, seq::terminated(parse_pattern, space_lf0)),
         ),
-        |x| Pattern::Tuple(TuplePattern(x)),
+        |x| Pattern::Tuple(x),
     );
     let mut p = seq::preceded(tag("("), seq::terminated(p, tag(")")));
     p(s)
@@ -278,7 +278,7 @@ fn parse_tuple_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
                 if exprs.len() == 1 {
                     exprs.get(0).unwrap().clone()
                 } else {
-                    Expr::Tuple(Tuple(exprs))
+                    Expr::Tuple(exprs)
                 }
             },
         ),
@@ -535,7 +535,7 @@ fn parse_tuple_type<'a>(s: &'a str) -> IResult<&'a str, Type> {
             multi::separated_list0(seq::tuple((space_lf0, tag(","), space_lf0)), parse_type),
             seq::pair(space_lf0, tag(")")),
         )),
-        |(_, x, _)| Type::Tuple(TupleType(x)),
+        |(_, x, _)| Type::Tuple(x),
     );
     p(s)
 }

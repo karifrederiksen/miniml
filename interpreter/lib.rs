@@ -66,9 +66,7 @@ impl Value {
             Value::Literal(val) => Expr::Literal(val.clone()),
             Value::Function { func, context: _ } => Expr::Function(func.clone()),
             Value::Intrinsic(x) => Expr::Symbol(x.clone()),
-            Value::Tuple(values) => {
-                Expr::Tuple(Tuple(values.iter().map(|val| val.as_expr()).collect()))
-            }
+            Value::Tuple(values) => Expr::Tuple(values.iter().map(|val| val.as_expr()).collect()),
             Value::Variant((constr, val)) => Expr::VariantConstr(Variant {
                 constr: constr.clone(),
                 value: match val {
@@ -81,13 +79,20 @@ impl Value {
     fn matches(&self, pat: &Pattern) -> bool {
         match (pat, self) {
             (Pattern::Symbol(_), _) => true,
-            (Pattern::Variant(p), Self::Variant((v_constr, _))) => p.constr == *v_constr,
+            (Pattern::Variant(p), Self::Variant((v_constr, contained_val))) => {
+                p.constr == *v_constr
+                    && match (&p.contained_pattern, contained_val) {
+                        (Some(pat), Some(val)) => val.matches(&*pat),
+                        (None, None) => true,
+                        _ => false,
+                    }
+            }
             (Pattern::Tuple(p), Self::Tuple(vals)) => {
-                if p.0.len() != vals.len() {
+                if p.len() != vals.len() {
                     return false;
                 }
-                for i in 0..p.0.len() {
-                    if !vals.get(i).unwrap().matches(p.0.get(i).unwrap()) {
+                for i in 0..p.len() {
+                    if !vals.get(i).unwrap().matches(p.get(i).unwrap()) {
                         return false;
                     }
                 }
@@ -175,8 +180,8 @@ impl ExecutionContext {
                 Ok(())
             }
             (Pattern::Tuple(tp), Value::Tuple(tv)) => {
-                for i in 0..tp.0.len() {
-                    self.bind(tp.0.get(i).unwrap(), tv.get(i).unwrap().clone())?;
+                for i in 0..tp.len() {
+                    self.bind(tp.get(i).unwrap(), tv.get(i).unwrap().clone())?;
                 }
                 Ok(())
             }
@@ -252,6 +257,9 @@ impl Interpreter {
     }
 
     fn get(&mut self, sym: &Symbol) -> Result<Value, Error> {
+        if sym.0 == "list_length_helper" {
+            println!("bindings: {:?}", self.current_ctx().bindings());
+        }
         match self.current_ctx().find(sym) {
             Some(x) => Ok(x.clone()),
             None => match self
@@ -280,10 +288,10 @@ impl Interpreter {
                 values.get(1).unwrap().clone(),
             )),
             _ => Err(ErrorKind::TypeMismatch((
-                Type::Tuple(TupleType(vec![
+                Type::Tuple(vec![
                     Type::Var(VariableType("?a".to_owned())),
                     Type::Var(VariableType("?b".to_owned())),
-                ])),
+                ]),
                 x.clone(),
             ))),
         }
@@ -296,10 +304,10 @@ impl Interpreter {
         match Self::eval_tup2(x)? {
             (Value::Literal(Literal::Int(l)), Value::Literal(Literal::Int(r))) => Ok(f(l, r)),
             (l, r) => Err(ErrorKind::TypeMismatch((
-                Type::Tuple(TupleType(vec![
+                Type::Tuple(vec![
                     Type::Intrinsic(IntrinsicType::Int),
                     Type::Intrinsic(IntrinsicType::Int),
-                ])),
+                ]),
                 Value::Tuple(vec![l, r]),
             ))),
         }
@@ -312,10 +320,10 @@ impl Interpreter {
         match Self::eval_tup2(x)? {
             (Value::Literal(Literal::Bool(l)), Value::Literal(Literal::Bool(r))) => Ok(f(l, r)),
             (l, r) => Err(ErrorKind::TypeMismatch((
-                Type::Tuple(TupleType(vec![
+                Type::Tuple(vec![
                     Type::Intrinsic(IntrinsicType::Bool),
                     Type::Intrinsic(IntrinsicType::Bool),
-                ])),
+                ]),
                 Value::Tuple(vec![l, r]),
             ))),
         }
@@ -461,8 +469,8 @@ impl Interpreter {
                 }
             }
             Expr::Tuple(x) => {
-                let mut exprs = Vec::with_capacity(x.0.len());
-                for e in &x.0 {
+                let mut exprs = Vec::with_capacity(x.len());
+                for e in x {
                     exprs.push(self.eval(e)?);
                 }
                 Ok(Value::Tuple(exprs))
@@ -479,10 +487,7 @@ impl Interpreter {
                         break;
                     }
                 }
-                let val = match val {
-                    None => panic!("no matching pattern"),
-                    Some(x) => x,
-                };
+                let val = val.expect("no matching pattern");
                 Ok(val)
             }
         };

@@ -60,7 +60,7 @@ impl SymbolTypeContext {
         }
         for (name, (l, r, out)) in arity_2_intrinsics.into_iter() {
             let t = Type::Func(Box::new(FunctionType {
-                arg: Type::Tuple(TupleType(vec![l, r])),
+                arg: Type::Tuple(vec![l, r]),
                 return_: out,
             }));
             self.global_symbol_type_map
@@ -220,11 +220,11 @@ impl SymbolTypeContext {
                 next_expr_t
             }
             Expr::Tuple(x) => {
-                let mut ts: Vec<Type> = Vec::with_capacity(x.0.len());
-                for e in &x.0 {
+                let mut ts: Vec<Type> = Vec::with_capacity(x.len());
+                for e in x {
                     ts.push(self.infer_expr(gen, scope_bindings, subst, e)?);
                 }
-                Ok(subst.apply(Type::Tuple(TupleType(ts))))
+                Ok(subst.apply(Type::Tuple(ts)))
             }
         }
     }
@@ -244,12 +244,12 @@ impl SymbolTypeContext {
             Pattern::Tuple(x) => {
                 let mut n = 0;
                 let mut ts = Vec::<Type>::new();
-                for pat in &x.0 {
+                for pat in x {
                     let (t, tn) = self.infer_pattern(gen, scope_bindings, subst, pat)?;
                     ts.push(t);
                     n += tn;
                 }
-                Ok((Type::Tuple(TupleType(ts)), n))
+                Ok((Type::Tuple(ts), n))
             }
             Pattern::Variant(x) => {
                 match (
@@ -329,9 +329,7 @@ impl Substitution {
                 arg: self.apply(t.arg),
                 return_: self.apply(t.return_),
             })),
-            Type::Tuple(t) => {
-                Type::Tuple(TupleType(t.0.into_iter().map(|t| self.apply(t)).collect()))
-            }
+            Type::Tuple(t) => Type::Tuple(t.into_iter().map(|t| self.apply(t)).collect()),
             Type::Intrinsic(t) => Type::Intrinsic(t),
             Type::Custom(t) => Type::Custom(CustomType {
                 name: t.name.clone(),
@@ -381,10 +379,10 @@ impl Substitution {
                 Ok(())
             }
             (Type::Tuple(t1), Type::Tuple(t2)) => {
-                if t1.0.len() != t2.0.len() {
+                if t1.len() != t2.len() {
                     Err(Error::TupleArityMismatch)
                 } else {
-                    for (t1, t2) in t1.0.iter().zip(t2.0.iter()) {
+                    for (t1, t2) in t1.iter().zip(t2.iter()) {
                         self.unify(self.apply(t1.clone()), self.apply(t2.clone()))?;
                     }
                     Ok(())
@@ -465,7 +463,7 @@ impl TypeRefinement {
                 (sym("False"), Self::Unreachable),
             ]),
             Type::Intrinsic(IntrinsicType::Int) => Self::Variable,
-            Type::Tuple(TupleType(ts)) => {
+            Type::Tuple(ts) => {
                 let ts = ts
                     .iter()
                     .map(|x| Self::from_type_help(custom_types, x, variant_stack))
@@ -505,7 +503,7 @@ impl TypeRefinement {
     ) -> Self {
         match (self, pat) {
             (_, Pattern::Symbol(_)) => Self::Unreachable,
-            (Self::Tuple(trs), Pattern::Tuple(TuplePattern(ts))) => {
+            (Self::Tuple(trs), Pattern::Tuple(ts)) => {
                 let trs: Vec<Self> = trs
                     .into_iter()
                     .zip(ts.iter())
