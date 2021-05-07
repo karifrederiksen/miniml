@@ -1,5 +1,10 @@
 let curry2 f = \a -> \b -> f (a, b)
 let eq  = curry2 intrinsic_eq
+let neq = curry2 intrinsic_neq
+let gt  = curry2 intrinsic_gt
+let gte = curry2 intrinsic_gte
+let lt  = curry2 intrinsic_lt
+let lte = curry2 intrinsic_lte
 let add = curry2 intrinsic_add
 let sub = curry2 intrinsic_sub
 let mul = curry2 intrinsic_mul

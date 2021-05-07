@@ -33,6 +33,11 @@ impl SymbolTypeContext {
         let arity_1_intrinsics = vec![("not", (t_bool.clone(), t_bool.clone()))];
         let arity_2_intrinsics = vec![
             ("eq", (t_a.clone(), t_a.clone(), t_bool.clone())),
+            ("neq", (t_a.clone(), t_a.clone(), t_bool.clone())),
+            ("gt", (t_int.clone(), t_int.clone(), t_bool.clone())),
+            ("gte", (t_int.clone(), t_int.clone(), t_bool.clone())),
+            ("lt", (t_int.clone(), t_int.clone(), t_bool.clone())),
+            ("lte", (t_int.clone(), t_int.clone(), t_bool.clone())),
             ("add", (t_int.clone(), t_int.clone(), t_int.clone())),
             ("sub", (t_int.clone(), t_int.clone(), t_int.clone())),
             ("mul", (t_int.clone(), t_int.clone(), t_int.clone())),

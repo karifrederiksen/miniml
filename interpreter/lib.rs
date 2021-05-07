@@ -337,6 +337,11 @@ impl Interpreter {
     fn eval_intrinsic(sy: &Symbol, x: &Value) -> Result<Value, ErrorKind> {
         match &sy.0[10..] {
             "eq" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l == r))),
+            "neq" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l != r))),
+            "gt" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l > r))),
+            "gte" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l >= r))),
+            "lt" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l < r))),
+            "lte" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Bool(l <= r))),
             "add" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l + r))),
             "sub" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l - r))),
             "mul" => Self::eval_intrinsic_int_int(x, |l, r| Value::Literal(Literal::Int(l * r))),
