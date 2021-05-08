@@ -18,6 +18,7 @@ pub enum Value {
     },
     Variant((Symbol, Option<Box<Value>>)),
     Intrinsic(Symbol),
+    Recursive(ast::Expr),
 }
 
 impl fmt::Debug for Value {
@@ -57,6 +58,9 @@ impl fmt::Debug for Value {
             Self::Intrinsic(sym) => {
                 write!(f, "{:?}", sym)
             }
+            Self::Recursive(x) => {
+                write!(f, "{:?}", x)
+            }
         }
     }
 }
@@ -74,6 +78,7 @@ impl Value {
                     None => None,
                 },
             }),
+            Value::Recursive(x) => x.clone(),
         }
     }
     fn matches(&self, pat: &Pattern) -> bool {
@@ -106,7 +111,6 @@ impl Value {
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     bindings: HashMap<Symbol, Value>,
-    recursives: Vec<(Pattern, Expr)>,
     name: Pattern,
     height: u32,
     previous: Option<Rc<ExecutionContext>>,
@@ -123,16 +127,6 @@ impl fmt::Display for ExecutionContext {
     }
 }
 impl ExecutionContext {
-    pub fn new_empty() -> Self {
-        Self {
-            bindings: HashMap::new(),
-            recursives: Vec::new(),
-            name: Pattern::Symbol(Symbol("Global context".to_owned())),
-            height: 0,
-            previous: None,
-        }
-    }
-
     pub fn stack(&self) -> Vec<&Pattern> {
         let mut ctx = self;
         let mut stack = vec![&self.name];
@@ -187,11 +181,15 @@ impl ExecutionContext {
             }
             (Pattern::Variant(v), Value::Variant((ty, val))) => {
                 if v.constr == ty {
-                    match (&v.contained_pattern, val) {
+                    match (&v.contained_pattern, val.clone()) {
                         (Some(pattern), Some(val)) => {
                             self.bind(&*pattern, *val)?;
                         }
-                        _ => panic!("pattern mismatch"),
+                        (None, None) => {}
+                        _ => panic!(
+                            "pattern mismatch:\n  {:?}\nand\n  {:?}",
+                            v.contained_pattern, val
+                        ),
                     }
                     Ok(())
                 } else {
@@ -205,7 +203,6 @@ impl ExecutionContext {
     pub fn enter_ctx(self, name: &Pattern) -> Self {
         return ExecutionContext {
             bindings: HashMap::new(),
-            recursives: Vec::new(),
             name: name.clone(),
             height: self.height + 1,
             previous: Some(Rc::new(self)),
@@ -235,15 +232,22 @@ pub enum ErrorKind {
 
 #[derive(Debug)]
 pub struct Interpreter {
+    globals: HashMap<Symbol, Value>,
     execution_contexts: Vec<ExecutionContext>,
     types: HashMap<CustomTypeSymbol, CustomTypeDefinition>,
     depth: usize,
 }
 
 impl Interpreter {
-    pub fn new(global_context: ExecutionContext) -> Self {
+    pub fn new() -> Self {
         Self {
-            execution_contexts: vec![global_context],
+            globals: HashMap::new(),
+            execution_contexts: vec![ExecutionContext {
+                bindings: HashMap::new(),
+                name: Pattern::Symbol(sym("global context")),
+                height: 0,
+                previous: None,
+            }],
             types: HashMap::new(),
             depth: 0,
         }
@@ -256,22 +260,14 @@ impl Interpreter {
         })
     }
 
-    fn get(&mut self, sym: &Symbol) -> Result<Value, Error> {
-        if sym.0 == "list_length_helper" {
-            println!("bindings: {:?}", self.current_ctx().bindings());
-        }
-        match self.current_ctx().find(sym) {
-            Some(x) => Ok(x.clone()),
-            None => match self
-                .current_ctx()
-                .recursives
-                .iter()
-                .find(|x| x.0.contains(sym))
-                .cloned()
-            {
-                None => self.error(ErrorKind::UndefinedSymbol(sym.clone())),
-                Some(x) => self.eval(&x.1),
-            },
+    pub fn get(&mut self, sy: &Symbol) -> Result<&Value, Error> {
+        if let Some(x) = self.globals.get(sy) {
+            Ok(x)
+        } else {
+            match self.current_ctx().find(sy) {
+                Some(x) => Ok(x),
+                None => self.error(ErrorKind::UndefinedSymbol(sy.clone())),
+            }
         }
     }
 
@@ -385,6 +381,10 @@ impl Interpreter {
             .expect("global context should exist");
         self.execution_contexts.push(ctx.enter_ctx(sy));
     }
+    #[inline]
+    pub fn current_ctx_exit(&mut self) {
+        self.current_ctx_mut().exit_ctx();
+    }
 
     #[inline]
     pub fn current_ctx(&self) -> &ExecutionContext {
@@ -400,18 +400,14 @@ impl Interpreter {
             .expect("global context should exist")
     }
 
-    pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
-        if self.depth > 1_000 {
-            return self.error(ErrorKind::DepthLimitReached);
-        }
-        self.depth += 1;
-        let val = match expr {
+    fn eval_inner(&mut self, expr: &Expr) -> Result<Value, Error> {
+        match expr {
             Expr::Literal(x) => Ok(Value::Literal(*x)),
             Expr::Symbol(x) => {
                 if Self::is_intrinsic(x) {
                     Ok(Value::Intrinsic(x.clone()))
                 } else {
-                    self.get(x)
+                    self.get(x).map(|x| x.clone())
                 }
             }
             Expr::VariantConstr(x) => {
@@ -436,18 +432,10 @@ impl Interpreter {
             }),
             Expr::Let(x) => {
                 self.current_ctx_enter(&x.bind);
-                if x.recursive {
-                    self.current_ctx_mut()
-                        .recursives
-                        .push((x.bind.clone(), *x.bind_expr.clone()));
-                }
                 let bind_value = self.eval(&*x.bind_expr)?;
                 self.current_ctx_mut().bind(&x.bind, bind_value)?;
                 let next_value = self.eval(&*x.next_expr)?;
-                self.current_ctx_mut().exit_ctx();
-                if x.recursive {
-                    self.current_ctx_mut().recursives.pop();
-                }
+                self.current_ctx_exit();
                 Ok(next_value)
             }
             Expr::Appl(Appl { func, arg }) => {
@@ -465,6 +453,7 @@ impl Interpreter {
                         self.execution_contexts.pop();
                         e
                     }
+                    Value::Recursive(x) => self.eval(&x),
                     _ => panic!("expected function, found: {:?}", func),
                 }
             }
@@ -483,14 +472,22 @@ impl Interpreter {
                         self.current_ctx_enter(&c.pattern);
                         self.current_ctx_mut().bind(&c.pattern, value)?;
                         val = Some(self.eval(&*c.expr)?);
-                        self.current_ctx_mut().exit_ctx();
+                        self.current_ctx_exit();
                         break;
                     }
                 }
                 let val = val.expect("no matching pattern");
                 Ok(val)
             }
-        };
+        }
+    }
+
+    pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
+        if self.depth > 1_000 {
+            return self.error(ErrorKind::DepthLimitReached);
+        }
+        self.depth += 1;
+        let val = self.eval_inner(expr);
         self.depth -= 1;
         val
     }
@@ -499,17 +496,14 @@ impl Interpreter {
             Statement::SymbolBinding(st) => {
                 self.current_ctx_enter(&Pattern::Symbol(st.bind.clone()));
                 if st.recursive {
-                    self.current_ctx_mut()
-                        .recursives
-                        .push((Pattern::Symbol(st.bind.clone()), st.expr.clone()));
+                    self.current_ctx_mut().bind(
+                        &Pattern::Symbol(st.bind.clone()),
+                        Value::Recursive(st.expr.clone()),
+                    )?;
                 }
                 let bind_value = self.eval(&st.expr)?;
-                self.current_ctx_mut().exit_ctx();
-                self.current_ctx_mut()
-                    .bind(&Pattern::Symbol(st.bind.clone()), bind_value)?;
-                if st.recursive {
-                    self.current_ctx_mut().recursives.pop();
-                }
+                self.current_ctx_exit();
+                self.globals.insert(st.bind.clone(), bind_value);
             }
             Statement::CustomType(t) => {
                 for v in &t.variants {
@@ -526,8 +520,7 @@ impl Interpreter {
                             context: self.current_ctx().clone(),
                         },
                     };
-                    self.current_ctx_mut()
-                        .bind(&Pattern::Symbol(v.constr.clone()), value)?;
+                    self.globals.insert(v.constr.clone(), value);
                 }
             }
         }

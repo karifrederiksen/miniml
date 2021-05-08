@@ -199,7 +199,6 @@ impl Function {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Let {
-    pub recursive: bool,
     pub bind: Pattern,
     pub bind_expr: Box<Expr>,
     pub next_expr: Box<Expr>,
@@ -209,11 +208,8 @@ impl fmt::Debug for Let {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {:?} = {:?} in {:?}",
-            (if self.recursive { "rec" } else { "let" }),
-            self.bind,
-            self.bind_expr,
-            self.next_expr
+            "let {:?} = {:?} in {:?}",
+            self.bind, self.bind_expr, self.next_expr
         )
     }
 }
@@ -643,11 +639,7 @@ impl Printer {
                 self.print_str(")");
             }
             Expr::Let(x) => {
-                if x.recursive {
-                    self.print_str("letrec");
-                } else {
-                    self.print_str("let");
-                }
+                self.print_str("let");
                 self.space();
 
                 self.print_str(&format!("{:?}", x.bind));

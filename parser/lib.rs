@@ -228,10 +228,7 @@ fn parse_let_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let mut p = context(
         "LetExpr",
         seq::tuple((
-            seq::terminated(
-                branch::alt((map(tag("rec"), |_| true), map(tag("let"), |_| false))),
-                space_lf1,
-            ),
+            seq::terminated(tag("let"), space_lf1),
             parse_pattern,
             seq::terminated(
                 branch::alt((
@@ -244,11 +241,10 @@ fn parse_let_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
             parse_expr,
         )),
     );
-    let (s, (recursive, bind, par, bind_expr, next_expr)) = p(s)?;
+    let (s, (_, bind, par, bind_expr, next_expr)) = p(s)?;
     Ok((
         s,
         Expr::Let(Let {
-            recursive,
             bind,
             bind_expr: Box::new(match par {
                 None => bind_expr,

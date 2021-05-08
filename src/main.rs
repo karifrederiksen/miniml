@@ -12,7 +12,6 @@ fn main() {
         let src: &str = include_str!("./program.src");
         parser::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
     };
-    let global_ctx = inter::ExecutionContext::new_empty();
     {
         use trc::Error;
         let mut ctx = trc::SymbolTypeContext::new();
@@ -29,7 +28,7 @@ fn main() {
         };
     }
     println!("{}\n\n", ast::print_module(&module));
-    let mut interp = inter::Interpreter::new(global_ctx);
+    let mut interp = inter::Interpreter::new();
     match interp.eval_module(&module) {
         Err(e) => {
             use inter::{Error, ErrorKind};
@@ -51,11 +50,11 @@ fn main() {
         }
         Ok(()) => {}
     };
-    match interp.current_ctx().find(&Symbol("main".to_owned())) {
-        Some(main) => {
+    match interp.get(&Symbol("main".to_owned())) {
+        Ok(main) => {
             println!("{:?}\n\n", main);
         }
-        None => {
+        Err(_) => {
             println!("no main found\n\n");
         }
     };
