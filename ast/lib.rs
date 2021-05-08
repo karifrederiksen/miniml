@@ -193,6 +193,9 @@ impl Function {
                     Self::replace_bound_expr(&mut c.expr, symbols);
                 }
             }
+            Expr::Type((_, x)) => {
+                Self::replace_bound_expr(x, symbols);
+            }
         }
     }
 }
@@ -279,6 +282,8 @@ pub enum Expr {
     IfElse(IfElse),
     Tuple(Vec<Expr>),
     Match(Match),
+    // Annotation for the type of the subtree. Might add more annotations...
+    Type((Type, Box<Expr>)),
 }
 
 impl fmt::Debug for Expr {
@@ -322,6 +327,9 @@ impl fmt::Debug for Expr {
             }
             Self::Match(x) => {
                 write!(f, "{:?}", x)
+            }
+            Self::Type((t, x)) => {
+                write!(f, "({:?} :: {:?})", x, t)
             }
         }
     }
@@ -677,6 +685,13 @@ impl Printer {
                     self.newline();
                 }
                 self.indent_decr();
+            }
+            Expr::Type((t, x)) => {
+                self.print_str("(");
+                self.print(x);
+                self.print_str(" :: ");
+                self.print_str(&format!("{:?}", t));
+                self.print_str(")");
             }
         }
     }

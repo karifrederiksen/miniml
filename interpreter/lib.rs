@@ -479,6 +479,7 @@ impl Interpreter {
                 let val = val.expect("no matching pattern");
                 Ok(val)
             }
+            Expr::Type((_, x)) => self.eval_inner(x),
         }
     }
 

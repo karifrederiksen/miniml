@@ -227,6 +227,7 @@ impl SymbolTypeContext {
                 }
                 Ok(subst.apply(Type::Tuple(ts)))
             }
+            Expr::Type((_, x)) => self.infer_expr(gen, scope_bindings, subst, x),
         }
     }
     fn infer_pattern(
