@@ -27,13 +27,13 @@ rec list_map f = \x ->
         Cons (hd, tl) -> Cons (f hd, list_map f tl),
         Empty -> Empty
 
-rec list_length_helper count = \x ->
+rec list_length_helper x = \count ->
     match x with
-        Cons (hd, tl) -> list_length_helper (add 1 count) tl,
+        Cons (hd, tl) -> list_length_helper tl (add 1 count),
         Empty -> count
 
 let list_length x =
-    list_length_helper 0 x
+    list_length_helper x 0
 
 
 let main = (fact 6, opt_map list_length (opt_map (range 0) (Some 1)))

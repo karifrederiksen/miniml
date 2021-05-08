@@ -195,11 +195,12 @@ impl SymbolTypeContext {
                     let expr_t = subst.apply(expr_t?);
                     subst.unify(return_.clone(), expr_t)?;
                 }
-                let t = subst.apply(return_);
-                if !self.is_exhaustive(x, &t) {
+                let expr_t = subst.apply(expr_t);
+                let return_t = subst.apply(return_);
+                if !self.is_exhaustive(x, &expr_t) {
                     Err(Error::NonExhaustiveMatch)
                 } else {
-                    Ok(t)
+                    Ok(return_t)
                 }
             }
             Expr::Let(x) => {
