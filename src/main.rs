@@ -28,6 +28,9 @@ fn main() {
         };
     }
     println!("{}\n\n", ast::print_module(&module));
+
+    let s = js_backend::generate(&module);
+    println!("{}\n\n", s);
     let mut interp = inter::Interpreter::new();
     match interp.eval_module(&module) {
         Err(e) => {

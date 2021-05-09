@@ -66,6 +66,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "js_backend"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "prelude",
+]
+
+[[package]]
 name = "lexer"
 version = "0.1.0"
 dependencies = [
@@ -123,6 +131,7 @@ version = "0.1.0"
 dependencies = [
  "ast",
  "interpreter",
+ "js_backend",
  "lexer",
  "parser",
  "prelude",

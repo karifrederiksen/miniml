@@ -13,3 +13,4 @@ parser = { path = "parser" }
 interpreter = { path = "interpreter" }
 type_recon = { path = "type_recon" }
 lexer = { path = "lexer" }
+js_backend = { path = "js_backend" }
