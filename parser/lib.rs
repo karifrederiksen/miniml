@@ -270,13 +270,7 @@ fn parse_tuple_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
                 space_lf0,
                 tag(")"),
             )),
-            |(_, _, exprs, _, _)| {
-                if exprs.len() == 1 {
-                    exprs.get(0).unwrap().clone()
-                } else {
-                    Expr::Tuple(exprs)
-                }
-            },
+            |(_, _, exprs, _, _)| Expr::Tuple(exprs),
         ),
     );
     p(s)

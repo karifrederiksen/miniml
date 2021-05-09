@@ -457,13 +457,16 @@ impl Interpreter {
                     _ => panic!("expected function, found: {:?}", func),
                 }
             }
-            Expr::Tuple(x) => {
-                let mut exprs = Vec::with_capacity(x.len());
-                for e in x {
-                    exprs.push(self.eval(e)?);
+            Expr::Tuple(x) => match &x[..] {
+                [x] => self.eval(x),
+                x => {
+                    let mut exprs = Vec::with_capacity(x.len());
+                    for e in x {
+                        exprs.push(self.eval(e)?);
+                    }
+                    Ok(Value::Tuple(exprs))
                 }
-                Ok(Value::Tuple(exprs))
-            }
+            },
             Expr::Match(x) => {
                 let mut val: Option<Value> = None;
                 let value = self.eval(&x.expr)?;

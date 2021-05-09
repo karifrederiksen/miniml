@@ -1,11 +1,22 @@
 TODO:
 
 * Replace panics with Error variants
+* Build a javascript codegen to replace the interpreter. The interpreter is too much work to maintain.
+    * I think there exists some Javascript interpreter crate that I could use for running the output
 
 ==============
 
 # ideas to explore
 
+* odin-style variants
+    * the name of the `case` is simplfy the name of whatever it contains. Example:
+      type Thing = String | Int | (Int, Int)
+    Then we can match on it like so:
+      match x with String s -> s, Int i -> String.fromInt i , (Int l, Int r) -> String.fromInt
+    Maybe it should be qualified like `Thing.String s`?
+
+    Then Custom types can be simplified to only define one atomic type, instead of defining multiple variants of a type
+      
 * algebraic effects and effect handlers (top level "effect Print a where a : Display")
 * arbitrary order of statements (statements are exclusively top-level)
     * There can be a transformation for putting them in dependence-order, and we can modify the binding-statement so that it contains a vector of bindings so that bindings that are mutually recursive will be part of the same statement.

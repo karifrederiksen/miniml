@@ -605,21 +605,17 @@ impl Printer {
             }
             Expr::VariantConstr(x) => {
                 if let Some(arg) = &x.value {
-                    self.print_str("(");
                     self.print_str(&x.constr.0);
                     self.space();
                     self.print(arg);
-                    self.print_str(")");
                 } else {
                     self.print_str(&x.constr.0);
                 }
             }
             Expr::Appl(x) => {
-                self.print_str("(");
                 self.print(&*x.func);
                 self.space();
                 self.print(&*x.arg);
-                self.print_str(")");
             }
             Expr::IfElse(x) => {
                 self.print_str("if");

@@ -220,13 +220,16 @@ impl SymbolTypeContext {
                 Self::remove_n_bindings(scope_bindings, bind_n);
                 next_expr_t
             }
-            Expr::Tuple(x) => {
-                let mut ts: Vec<Type> = Vec::with_capacity(x.len());
-                for e in x {
-                    ts.push(self.infer_expr(gen, scope_bindings, subst, e)?);
+            Expr::Tuple(x) => match &x[..] {
+                [x] => self.infer_expr(gen, scope_bindings, subst, x),
+                x => {
+                    let mut ts: Vec<Type> = Vec::with_capacity(x.len());
+                    for e in x {
+                        ts.push(self.infer_expr(gen, scope_bindings, subst, e)?);
+                    }
+                    Ok(subst.apply(Type::Tuple(ts)))
                 }
-                Ok(subst.apply(Type::Tuple(ts)))
-            }
+            },
             Expr::Type((_, x)) => self.infer_expr(gen, scope_bindings, subst, x),
         }
     }
