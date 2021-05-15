@@ -2,8 +2,12 @@
 #![allow(unused_imports)]
 
 use interpreter as inter;
+use io::prelude::*;
 use prelude::{sym, Symbol};
 use std::collections::HashMap;
+use std::fs;
+use std::io;
+use std::process::{Command, ExitStatus};
 use type_recon as trc;
 
 fn main() {
@@ -27,38 +31,32 @@ fn main() {
             }
         };
     }
-    println!("{}\n\n", ast::print_module(&module));
+    let module_str = format!("{}", ast::print_module(&module));
 
-    let s = js_backend::generate(&module);
-    println!("{}\n\n", s);
-    let mut interp = inter::Interpreter::new();
-    match interp.eval_module(&module) {
-        Err(e) => {
-            use inter::{Error, ErrorKind};
-            let msg = match &e.kind {
-                ErrorKind::DepthLimitReached => "stack overflow".to_owned(),
-                ErrorKind::TypeMismatch((expected, found)) => format!(
-                    "type mismatch: expected something of type {:?} and found value {:?}",
-                    expected, found
-                ),
-                ErrorKind::UndefinedSymbol(sym) => {
-                    format!("symbol used before declaration: {:?}", sym)
-                }
-            };
-            println!("Evaluation error: {}", msg);
-            for x in e.stack {
-                println!("  {:?}", x);
-            }
-            return;
-        }
-        Ok(()) => {}
-    };
-    match interp.get(&Symbol("main".to_owned())) {
-        Ok(main) => {
-            println!("{:?}\n\n", main);
-        }
-        Err(_) => {
-            println!("no main found\n\n");
-        }
-    };
+    fs::File::create("output/module.src")
+        .unwrap()
+        .write_all(module_str.as_bytes())
+        .unwrap();
+
+    let mut js_code = js_backend::generate(&module);
+    js_code.push_str("console.log(main);\n");
+
+    fs::File::create("output/output.js")
+        .unwrap()
+        .write_all(js_code.as_bytes())
+        .unwrap();
+
+    let output = Command::new("node")
+        .arg("output/output.js")
+        .output()
+        .expect("failed to execute process");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    if output.status.success() {
+        println!("{}", stdout);
+    } else {
+        println!("ERROR:\n\n");
+        println!("stdout:\n{}", stdout);
+        println!("stderr:\n{}", stderr);
+    }
 }

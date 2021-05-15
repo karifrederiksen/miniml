@@ -67,3 +67,31 @@ TODO:
         display :: Display a, Ord a => a -> String
 * derive macros for traits
 
+
+## 
+
+[Haskell's IR ((System F)++)]  (https://www.youtube.com/watch?v=uR_VzYxvbxg)
+```
+data Expr
+    = Var  Var
+    | Lit  Literal
+    | App  Expr         -- both term and type application
+    | Lam  Var Expr     -- both term and type lambda
+    | Let  Bind Expr
+    | Case Expr Var Type [(AltCon, [Var], Expr)]
+    | Type Type         -- promote type to be an expr so types can be applied
+
+data Var
+    = Id Name Type
+    | TyVar Name Kind
+
+type Kind = Type
+
+data Type
+    = TyVarTy  Var
+    | LitTy    TyLit
+    | AppTy    Type Type
+    | TyConApp TyCon [Type]
+    | FunTy    Type Type
+    | ForAllTy Var Type
+```
