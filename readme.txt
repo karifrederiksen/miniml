@@ -8,6 +8,8 @@ TODO:
 
 # ideas to explore
 
+* dependency graph
+    * reorder declarations based on the dependency graph
 * odin-style variants
     * the name of the `case` is simplfy the name of whatever it contains. Example:
       type Thing = String | Int | (Int, Int)

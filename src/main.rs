@@ -12,8 +12,8 @@ use type_recon as trc;
 
 fn main() {
     let mut module: ast::Module = {
-        let prelude: &str = include_str!("./prelude.src");
-        let src: &str = include_str!("./program.src");
+        let prelude: &str = include_str!("./prelude");
+        let src: &str = include_str!("./program");
         parser::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
     };
     {
@@ -33,7 +33,7 @@ fn main() {
     }
     let module_str = format!("{}", ast::print_module(&module));
 
-    fs::File::create("output/module.src")
+    fs::File::create("output/module")
         .unwrap()
         .write_all(module_str.as_bytes())
         .unwrap();
