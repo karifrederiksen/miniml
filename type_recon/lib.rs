@@ -73,7 +73,7 @@ impl SymbolTypeContext {
     pub fn annotate(&mut self, module: &mut Module) -> Result<(), Error> {
         for st in &mut module.statements {
             match st {
-                Statement::SymbolBinding(st) => {
+                Statement::SymbolBinding((_, st)) => {
                     let mut gen = VariableTypeGenerator::new();
                     if st.recursive {
                         self.add_global_symbol(st.bind.clone(), gen.next_scheme());
@@ -83,7 +83,7 @@ impl SymbolTypeContext {
                     self.add_global_symbol(st.bind.clone(), ty.clone());
                     st.type_ = Some(ty);
                 }
-                Statement::CustomType(t) => {
+                Statement::CustomType((_, t)) => {
                     let ty = Type::Custom(t.type_.clone());
                     self.custom_types
                         .insert(t.type_.name.clone(), t.variants.clone());
@@ -119,16 +119,16 @@ impl SymbolTypeContext {
         expr: &Expr,
     ) -> Result<Type, Error> {
         match expr {
-            Expr::Literal(Literal::Bool(_)) => Ok(Type::Intrinsic(IntrinsicType::Bool)),
-            Expr::Literal(Literal::Int(_)) => Ok(Type::Intrinsic(IntrinsicType::Int)),
-            Expr::Symbol(x) => match self.global_symbol_type_map.get(x) {
+            Expr::Literal((_, Literal::Bool(_))) => Ok(Type::Intrinsic(IntrinsicType::Bool)),
+            Expr::Literal((_, Literal::Int(_))) => Ok(Type::Intrinsic(IntrinsicType::Int)),
+            Expr::Symbol((_, x)) => match self.global_symbol_type_map.get(x) {
                 Some(t) => Ok(t.instantiate(gen)),
                 None => match scope_bindings.iter().rev().find(|(key, _)| key == x) {
                     Some((_, t)) => Ok(t.clone()),
                     None => todo!("undefined symbol: {:?}", x),
                 },
             },
-            Expr::VariantConstr(Variant { constr, value }) => {
+            Expr::VariantConstr((_, Variant { constr, value })) => {
                 match self.global_symbol_type_map.get(&constr) {
                     Some(constr_t) => {
                         let arg_t = match value {
@@ -148,7 +148,7 @@ impl SymbolTypeContext {
                     None => todo!("undefined variant constructor: {:?}", constr),
                 }
             }
-            Expr::Function(x) => {
+            Expr::Function((_, x)) => {
                 let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);
                 Self::remove_n_bindings(scope_bindings, arg_n);
@@ -157,7 +157,7 @@ impl SymbolTypeContext {
                     return_: return_t?,
                 })))
             }
-            Expr::Appl(x) => {
+            Expr::Appl((_, x)) => {
                 let return_t = Type::Var(gen.next());
                 let func = self.infer_expr(gen, scope_bindings, subst, &x.func)?;
                 let arg = self.infer_expr(gen, scope_bindings, subst, &x.arg)?;
@@ -171,7 +171,7 @@ impl SymbolTypeContext {
                 let t = subst.apply(return_t);
                 Ok(t)
             }
-            Expr::IfElse(x) => {
+            Expr::IfElse((_, x)) => {
                 let expr = self.infer_expr(gen, scope_bindings, subst, &x.expr)?;
                 subst.unify(expr, Type::Intrinsic(IntrinsicType::Bool))?;
                 let case_true = self.infer_expr(gen, scope_bindings, subst, &x.case_true)?;
@@ -179,7 +179,7 @@ impl SymbolTypeContext {
                 subst.unify(case_true.clone(), case_false)?;
                 Ok(subst.apply(case_true))
             }
-            Expr::Match(x) => {
+            Expr::Match((_, x)) => {
                 let expr_t = self.infer_expr(gen, scope_bindings, subst, &x.expr)?;
                 let return_ = Type::Var(gen.next());
 
@@ -203,7 +203,7 @@ impl SymbolTypeContext {
                     Ok(return_t)
                 }
             }
-            Expr::Let(x) => {
+            Expr::Let((_, x)) => {
                 let (bind_t, bind_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let bind_expr_t = match self.infer_expr(gen, scope_bindings, subst, &x.bind_expr) {
                     Ok(x) => x,
@@ -220,7 +220,7 @@ impl SymbolTypeContext {
                 Self::remove_n_bindings(scope_bindings, bind_n);
                 next_expr_t
             }
-            Expr::Tuple(x) => match &x[..] {
+            Expr::Tuple((_, x)) => match &x[..] {
                 [x] => self.infer_expr(gen, scope_bindings, subst, x),
                 x => {
                     let mut ts: Vec<Type> = Vec::with_capacity(x.len());
@@ -230,7 +230,6 @@ impl SymbolTypeContext {
                     Ok(subst.apply(Type::Tuple(ts)))
                 }
             },
-            Expr::Type((_, x)) => self.infer_expr(gen, scope_bindings, subst, x),
         }
     }
     fn infer_pattern(
@@ -243,13 +242,13 @@ impl SymbolTypeContext {
         match pat {
             Pattern::Symbol(x) => {
                 let t = Type::Var(gen.next());
-                scope_bindings.push((x.clone(), t.clone()));
+                scope_bindings.push((x.1.clone(), t.clone()));
                 Ok((t, 1))
             }
             Pattern::Tuple(x) => {
                 let mut n = 0;
                 let mut ts = Vec::<Type>::new();
-                for pat in x {
+                for pat in &x.1 {
                     let (t, tn) = self.infer_pattern(gen, scope_bindings, subst, pat)?;
                     ts.push(t);
                     n += tn;
@@ -258,8 +257,8 @@ impl SymbolTypeContext {
             }
             Pattern::Variant(x) => {
                 match (
-                    self.global_symbol_type_map.get(&x.constr),
-                    &x.contained_pattern,
+                    self.global_symbol_type_map.get(&x.1.constr),
+                    &x.1.contained_pattern,
                 ) {
                     (Some(t), Some(p)) => match t.instantiate(gen) {
                         Type::Func(ft) => {
@@ -511,7 +510,7 @@ impl TypeRefinement {
             (Self::Tuple(trs), Pattern::Tuple(ts)) => {
                 let trs: Vec<Self> = trs
                     .into_iter()
-                    .zip(ts.iter())
+                    .zip(ts.1.iter())
                     .map(|(tr, p)| {
                         if let Self::Unreachable = tr {
                             Self::Unreachable
@@ -530,9 +529,9 @@ impl TypeRefinement {
                 let trs: Vec<(Symbol, Self)> = trs
                     .into_iter()
                     .filter_map(|(constr, tr)| {
-                        if constr.0 != vs.constr.0 {
+                        if constr.0 != vs.1.constr.0 {
                             Some((constr, tr))
-                        } else if let Some(pat) = &vs.contained_pattern {
+                        } else if let Some(pat) = &vs.1.contained_pattern {
                             match tr.refine(custom_types, &*pat) {
                                 Self::Unreachable => None,
                                 x => Some((constr, x)),

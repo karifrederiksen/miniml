@@ -1,5 +1,4 @@
 use ast::*;
-use prelude::*;
 
 pub fn generate(module: &Module) -> String {
     let mut gen = Generator {
@@ -10,12 +9,12 @@ pub fn generate(module: &Module) -> String {
     };
     for st in &module.statements {
         match st {
-            Statement::SymbolBinding(x) => {
+            Statement::SymbolBinding((_, x)) => {
                 gen.print(format!("const {} = ", x.bind.0));
                 gen.generate_expr(&x.expr);
                 gen.println(";");
             }
-            Statement::CustomType(x) => {
+            Statement::CustomType((_, x)) => {
                 for v in &x.variants {
                     gen.print(format!("const {} = ", v.constr.0));
                     if let Some(_) = &v.contained_type {
@@ -66,9 +65,9 @@ impl Generator {
         let id = id.as_ref();
         match patt {
             Pattern::Symbol(x) => {
-                self.println(format!("const {} = {};", x.0, id));
+                self.println(format!("const {} = {};", x.1 .0, id));
             }
-            Pattern::Tuple(xs) => match &xs[..] {
+            Pattern::Tuple(xs) => match &xs.1[..] {
                 [x] => self.unpack_pattern(x, id),
                 xs => {
                     for (idx, x) in xs.iter().enumerate() {
@@ -77,7 +76,7 @@ impl Generator {
                 }
             },
             Pattern::Variant(x) => {
-                if let Some(contained_pattern) = &x.contained_pattern {
+                if let Some(contained_pattern) = &x.1.contained_pattern {
                     self.unpack_pattern(contained_pattern, format!("{}.V", id));
                 }
             }
@@ -87,8 +86,8 @@ impl Generator {
     fn pattern_matches<S: AsRef<str>>(&mut self, patt: &Pattern, id: S) {
         let id = id.as_ref();
         match patt {
-            Pattern::Symbol(x) => self.print("true"),
-            Pattern::Tuple(xs) => match &xs[..] {
+            Pattern::Symbol(_) => self.print("true"),
+            Pattern::Tuple(xs) => match &xs.1[..] {
                 [x] => self.pattern_matches(x, id),
                 xs => {
                     for x in xs.iter().take(1) {
@@ -101,8 +100,8 @@ impl Generator {
                 }
             },
             Pattern::Variant(x) => {
-                self.print(format!("{}.$ === \"{}\"", id, x.constr.0));
-                if let Some(su) = &x.contained_pattern {
+                self.print(format!("{}.$ === \"{}\"", id, x.1.constr.0));
+                if let Some(su) = &x.1.contained_pattern {
                     self.print(" && ");
                     self.pattern_matches(su, format!("{}.V", id));
                 }
@@ -112,13 +111,13 @@ impl Generator {
 
     fn generate_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Appl(x) => {
+            Expr::Appl((_, x)) => {
                 self.generate_expr(&x.func);
                 self.print("(");
                 self.generate_expr(&x.arg);
                 self.print(")");
             }
-            Expr::Function(x) => {
+            Expr::Function((_, x)) => {
                 let id = format!("$_{}", self.next_id);
                 self.next_id += 1;
                 self.print(format!("(({}) => ", id));
@@ -130,7 +129,7 @@ impl Generator {
                 self.exit_block();
                 self.print(")");
             }
-            Expr::IfElse(x) => {
+            Expr::IfElse((_, x)) => {
                 self.generate_expr(&x.expr);
                 self.indent += 1;
                 self.println("");
@@ -140,7 +139,7 @@ impl Generator {
                 self.generate_expr(&x.case_false);
                 self.indent -= 1;
             }
-            Expr::Let(x) => {
+            Expr::Let((_, x)) => {
                 let id = format!("$_{}", self.next_id);
                 self.next_id += 1;
                 self.print(format!("(({}) => ", id));
@@ -154,9 +153,9 @@ impl Generator {
                 self.generate_expr(&x.bind_expr);
                 self.print(")");
             }
-            Expr::Literal(Literal::Bool(x)) => self.print(if *x { "true" } else { "false" }),
-            Expr::Literal(Literal::Int(n)) => self.print(format!("{}", n)),
-            Expr::Match(x) => {
+            Expr::Literal((_, Literal::Bool(x))) => self.print(if *x { "true" } else { "false" }),
+            Expr::Literal((_, Literal::Int(n))) => self.print(format!("{}", n)),
+            Expr::Match((_, x)) => {
                 let id = format!("$_{}", self.next_id);
                 self.next_id += 1;
                 self.print(format!("(({}) => ", id));
@@ -179,10 +178,10 @@ impl Generator {
                 self.generate_expr(&x.expr);
                 self.print(")");
             }
-            Expr::Symbol(x) => {
+            Expr::Symbol((_, x)) => {
                 self.print(&x.0);
             }
-            Expr::Tuple(xs) => match &xs[..] {
+            Expr::Tuple((_, xs)) => match &xs[..] {
                 [x] => self.generate_expr(x),
                 xs => {
                     self.print("[");
@@ -196,10 +195,7 @@ impl Generator {
                     self.print("]");
                 }
             },
-            Expr::Type(x) => {
-                self.generate_expr(&x.1);
-            }
-            Expr::VariantConstr(x) => {
+            Expr::VariantConstr((_, x)) => {
                 self.print(&x.constr.0);
                 if let Some(y) = &x.value {
                     self.print("(");

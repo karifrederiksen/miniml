@@ -10,7 +10,7 @@ use nom::sequence as seq;
 use nom::IResult;
 
 use ast::*;
-use prelude::{sym, Symbol};
+use prelude::{sym, Span, Symbol};
 
 const RESERVED_CAMELCASE_SYMBOLS: [&'static str; 4] = ["Int", "Bool", "True", "False"];
 
@@ -54,7 +54,10 @@ fn parse_literal(s: &str) -> IResult<&str, Literal> {
     p(s)
 }
 fn parse_literal_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = context("Literal", map(parse_literal, Expr::Literal));
+    let mut p = context(
+        "Literal",
+        map(parse_literal, |x| Expr::Literal((Span::default(), x))),
+    );
     p(s)
 }
 
@@ -102,11 +105,18 @@ fn parse_camelcase_symbol(s: &str) -> IResult<&str, Symbol> {
     p(s)
 }
 fn parse_sym_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = context("Symbol", map(parse_lowercase_symbol, Expr::Symbol));
+    let mut p = context(
+        "Symbol",
+        map(parse_lowercase_symbol, |x| {
+            Expr::Symbol((Span::default(), x))
+        }),
+    );
     p(s)
 }
 fn parse_sym_pattern(s: &str) -> IResult<&str, Pattern> {
-    let mut p = map(parse_lowercase_symbol, Pattern::Symbol);
+    let mut p = map(parse_lowercase_symbol, |x| {
+        Pattern::Symbol((Span::default(), x))
+    });
     p(s)
 }
 fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
@@ -115,7 +125,7 @@ fn parse_tuple_pattern(s: &str) -> IResult<&str, Pattern> {
             tag(","),
             seq::preceded(space_lf0, seq::terminated(parse_pattern, space_lf0)),
         ),
-        |x| Pattern::Tuple(x),
+        |x| Pattern::Tuple((Span::default(), x)),
     );
     let mut p = seq::preceded(tag("("), seq::terminated(p, tag(")")));
     p(s)
@@ -132,10 +142,13 @@ fn parse_variant_pattern(s: &str) -> IResult<&str, Pattern> {
     let (s, (constr, contained_pattern)) = p(s)?;
     Ok((
         s,
-        Pattern::Variant(VariantPattern {
-            constr,
-            contained_pattern,
-        }),
+        Pattern::Variant((
+            Span::default(),
+            VariantPattern {
+                constr,
+                contained_pattern,
+            },
+        )),
     ))
 }
 fn parse_pattern(s: &str) -> IResult<&str, Pattern> {
@@ -195,11 +208,14 @@ fn parse_if_else_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let (s, (_, _, expr, _, _, _, case_true, _, _, _, case_false)) = p(s)?;
     Ok((
         s,
-        Expr::IfElse(IfElse {
-            expr: Box::new(expr),
-            case_true: Box::new(case_true),
-            case_false: Box::new(case_false),
-        }),
+        Expr::IfElse((
+            Span::default(),
+            IfElse {
+                expr: Box::new(expr),
+                case_true: Box::new(case_true),
+                case_false: Box::new(case_false),
+            },
+        )),
     ))
 }
 fn parse_func_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
@@ -218,10 +234,13 @@ fn parse_func_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let (s, (_, _, bind, _, _, _, expr)) = p(s)?;
     Ok((
         s,
-        Expr::Function(Function {
-            bind,
-            expr: Box::new(expr),
-        }),
+        Expr::Function((
+            Span::default(),
+            Function {
+                bind,
+                expr: Box::new(expr),
+            },
+        )),
     ))
 }
 fn parse_let_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
@@ -244,17 +263,23 @@ fn parse_let_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let (s, (_, bind, par, bind_expr, next_expr)) = p(s)?;
     Ok((
         s,
-        Expr::Let(Let {
-            bind,
-            bind_expr: Box::new(match par {
-                None => bind_expr,
-                Some(par) => Expr::Function(Function {
-                    bind: par,
-                    expr: Box::new(bind_expr),
+        Expr::Let((
+            Span::default(),
+            Let {
+                bind,
+                bind_expr: Box::new(match par {
+                    None => bind_expr,
+                    Some(par) => Expr::Function((
+                        Span::default(),
+                        Function {
+                            bind: par,
+                            expr: Box::new(bind_expr),
+                        },
+                    )),
                 }),
-            }),
-            next_expr: Box::new(next_expr),
-        }),
+                next_expr: Box::new(next_expr),
+            },
+        )),
     ))
 }
 
@@ -270,7 +295,7 @@ fn parse_tuple_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
                 space_lf0,
                 tag(")"),
             )),
-            |(_, _, exprs, _, _)| Expr::Tuple(exprs),
+            |(_, _, exprs, _, _)| Expr::Tuple((Span::default(), exprs)),
         ),
     );
     p(s)
@@ -301,10 +326,13 @@ fn parse_match_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
     let (s, (_, expr, _, cases)) = p(s)?;
     Ok((
         s,
-        Expr::Match(Match {
-            expr: Box::new(expr),
-            cases,
-        }),
+        Expr::Match((
+            Span::default(),
+            Match {
+                expr: Box::new(expr),
+                cases,
+            },
+        )),
     ))
 }
 
@@ -343,10 +371,13 @@ fn parse_expr<'a>(s: &'a str) -> IResult<&'a str, Expr> {
         Ok((s, expr))
     } else {
         for i in 1..exprs.len() {
-            expr = Expr::Appl(Appl {
-                func: Box::new(expr),
-                arg: Box::new(exprs.get(i).unwrap().clone()),
-            });
+            expr = Expr::Appl((
+                Span::default(),
+                Appl {
+                    func: Box::new(expr),
+                    arg: Box::new(exprs.get(i).unwrap().clone()),
+                },
+            ));
         }
         Ok((s, expr))
     }
@@ -396,10 +427,13 @@ fn parse_symbol_binding<'a>(s: &'a str) -> IResult<&'a str, SymbolBinding> {
         type_: None,
         expr: match par {
             None => expr,
-            Some(par) => Expr::Function(Function {
-                bind: par,
-                expr: Box::new(expr),
-            }),
+            Some(par) => Expr::Function((
+                Span::default(),
+                Function {
+                    bind: par,
+                    expr: Box::new(expr),
+                },
+            )),
         },
     };
     Ok((s, stmt))
@@ -421,7 +455,7 @@ fn parse_symbol_binding_statement<'a>(s: &'a str) -> IResult<&'a str, Statement>
     });
     let mut p = map(
         branch::alt((binding_with_type, parse_symbol_binding)),
-        Statement::SymbolBinding,
+        |x| Statement::SymbolBinding((Span::default(), x)),
     );
     p(s)
 }
@@ -468,7 +502,7 @@ fn parse_variant<'a>(s: &'a str) -> IResult<&'a str, Variant> {
     p(s)
 }
 fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = map(parse_variant, Expr::VariantConstr);
+    let mut p = map(parse_variant, |x| Expr::VariantConstr((Span::default(), x)));
     p(s)
 }
 
@@ -484,7 +518,7 @@ fn parse_custom_type_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {
     ));
     let (s, (_, type_, _, variants)) = p(s)?;
     let ty = CustomTypeDefinition { type_, variants };
-    Ok((s, Statement::CustomType(ty)))
+    Ok((s, Statement::CustomType((Span::default(), ty))))
 }
 
 pub fn parse_module(s: &str) -> Result<Module, String> {

@@ -1,8 +1,6 @@
 TODO:
 
 * Replace panics with Error variants
-* Build a javascript codegen to replace the interpreter. The interpreter is too much work to maintain.
-    * I think there exists some Javascript interpreter crate that I could use for running the output
 
 ==============
 
@@ -29,6 +27,8 @@ TODO:
 * pattern-matching in function definition:
     fact 0 = 1
     fact n = n * (fact (n - 1))
+* optimize pattern-matches into a decision tree
+    * read "When Do Match-Compilation Heuristics Matter?"
 * operators (generic in such as way that the operators are user-definable)
 * quantitative type theory
     * do I need erased types? maybe a linear type modifier is enough?

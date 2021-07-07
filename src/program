@@ -1,11 +1,11 @@
 type Option a = Some a | None
 
-let opt_map f = \x ->
-    match x with
-        Some y -> Some (f y),
-        None -> None
+let opt_map f x =
+    match x
+    | Some y -> Some (f y)
+    | None -> None
 
-let incr : Int -> Int
+-- let incr : Int -> Int
 let incr = add 1
 
 rec fact n =
@@ -16,21 +16,21 @@ rec fact n =
 
 type List a = Cons (a, List a) | Empty
 
-rec range from = \to ->
+rec range from to =
     if gte to from then
         Cons (to, (range from (sub to 1)))
     else
         Empty
 
-rec list_map f = \x ->
-    match x with
-        Cons (hd, tl) -> Cons (f hd, list_map f tl),
-        Empty -> Empty
+rec list_map f x =
+    match x
+    | Cons (hd, tl) -> Cons (f hd, list_map f tl)
+    | Empty -> Empty
 
-rec list_length_helper x = \count ->
-    match x with
-        Cons (hd, tl) -> list_length_helper tl (add 1 count),
-        Empty -> count
+rec list_length_helper x count =
+    match x
+    | Cons (hd, tl) -> list_length_helper tl (add 1 count)
+    | Empty -> count
 
 let list_length x =
     list_length_helper x 0

@@ -101,15 +101,15 @@ impl fmt::Debug for VariantPattern {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Pattern {
-    Symbol(Symbol),
-    Tuple(Vec<Pattern>),
-    Variant(VariantPattern),
+    Symbol((Span, Symbol)),
+    Tuple((Span, Vec<Pattern>)),
+    Variant((Span, VariantPattern)),
 }
 impl fmt::Debug for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Symbol(x) => write!(f, "{:?}", x),
-            Self::Tuple(x) => {
+            Self::Symbol((_, x)) => write!(f, "{:?}", x),
+            Self::Tuple((_, x)) => {
                 write!(f, "(")?;
                 for e in x.iter().take(1) {
                     write!(f, "{:?}", e)?;
@@ -119,16 +119,16 @@ impl fmt::Debug for Pattern {
                 }
                 write!(f, ")")
             }
-            Self::Variant(x) => write!(f, "{:?}", x),
+            Self::Variant((_, x)) => write!(f, "{:?}", x),
         }
     }
 }
 impl Pattern {
     pub fn contains(&self, s: &Symbol) -> bool {
         match self {
-            Self::Symbol(x) => x == s,
-            Self::Tuple(ts) => ts.iter().any(|x| x.contains(s)),
-            Self::Variant(v) => match &v.contained_pattern {
+            Self::Symbol(x) => &x.1 == s,
+            Self::Tuple(ts) => ts.1.iter().any(|x| x.contains(s)),
+            Self::Variant(v) => match &v.1.contained_pattern {
                 None => false,
                 Some(x) => x.contains(s),
             },
@@ -155,46 +155,43 @@ impl Function {
 
     fn replace_bound_expr(e: &mut Expr, symbols: &HashMap<Symbol, Expr>) {
         match e {
-            Expr::Symbol(x) => {
+            Expr::Symbol((_, x)) => {
                 if let Some(val) = symbols.get(x) {
                     *e = val.clone();
                 }
             }
-            Expr::VariantConstr(x) => {
+            Expr::VariantConstr((_, x)) => {
                 if let Some(val) = &mut x.value {
                     Self::replace_bound_expr(val, symbols);
                 }
             }
             Expr::Literal(_) => (),
-            Expr::Function(x) => {
+            Expr::Function((_, x)) => {
                 Self::replace_bound_expr(&mut x.expr, symbols);
             }
-            Expr::Let(x) => {
+            Expr::Let((_, x)) => {
                 Self::replace_bound_expr(&mut x.bind_expr, symbols);
                 Self::replace_bound_expr(&mut x.next_expr, symbols);
             }
-            Expr::Appl(x) => {
+            Expr::Appl((_, x)) => {
                 Self::replace_bound_expr(&mut x.arg, symbols);
                 Self::replace_bound_expr(&mut x.func, symbols);
             }
-            Expr::IfElse(x) => {
+            Expr::IfElse((_, x)) => {
                 Self::replace_bound_expr(&mut x.expr, symbols);
                 Self::replace_bound_expr(&mut x.case_true, symbols);
                 Self::replace_bound_expr(&mut x.case_false, symbols);
             }
-            Expr::Tuple(x) => {
+            Expr::Tuple((_, x)) => {
                 for e in x.iter_mut() {
                     Self::replace_bound_expr(e, symbols);
                 }
             }
-            Expr::Match(x) => {
+            Expr::Match((_, x)) => {
                 Self::replace_bound_expr(&mut x.expr, symbols);
                 for c in x.cases.iter_mut() {
                     Self::replace_bound_expr(&mut c.expr, symbols);
                 }
-            }
-            Expr::Type((_, x)) => {
-                Self::replace_bound_expr(x, symbols);
             }
         }
     }
@@ -254,12 +251,9 @@ pub struct Match {
 }
 impl fmt::Debug for Match {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "match {:?} with ", self.expr)?;
-        for c in self.cases.iter().take(1) {
-            write!(f, "{:?} -> {:?}", c.pattern, c.expr)?;
-        }
-        for c in self.cases.iter().skip(1) {
-            write!(f, ", {:?} -> {:?}", c.pattern, c.expr)?;
+        write!(f, "match {:?}", self.expr)?;
+        for c in &self.cases {
+            write!(f, "| {:?} -> {:?}", c.pattern, c.expr)?;
         }
         write!(f, ")")
     }
@@ -273,26 +267,24 @@ pub struct MatchCase {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Expr {
-    Symbol(Symbol),
-    VariantConstr(Variant),
-    Literal(Literal),
-    Function(Function),
-    Let(Let),
-    Appl(Appl),
-    IfElse(IfElse),
-    Tuple(Vec<Expr>),
-    Match(Match),
-    // Annotation for the type of the subtree. Might add more annotations...
-    Type((Type, Box<Expr>)),
+    Symbol((Span, Symbol)),
+    VariantConstr((Span, Variant)),
+    Literal((Span, Literal)),
+    Function((Span, Function)),
+    Let((Span, Let)),
+    Appl((Span, Appl)),
+    IfElse((Span, IfElse)),
+    Tuple((Span, Vec<Expr>)),
+    Match((Span, Match)),
 }
 
 impl fmt::Debug for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Symbol(x) => {
+            Self::Symbol((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::VariantConstr(x) => {
+            Self::VariantConstr((_, x)) => {
                 if let Some(arg) = &x.value {
                     write!(f, "({:?} {:?})", x.constr, arg)?;
                 } else {
@@ -300,22 +292,22 @@ impl fmt::Debug for Expr {
                 }
                 Ok(())
             }
-            Self::Literal(x) => {
+            Self::Literal((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::Function(x) => {
+            Self::Function((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::Let(x) => {
+            Self::Let((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::Appl(x) => {
+            Self::Appl((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::IfElse(x) => {
+            Self::IfElse((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::Tuple(x) => {
+            Self::Tuple((_, x)) => {
                 write!(f, "(")?;
                 for e in x.iter().take(1) {
                     write!(f, "{:?}", e)?;
@@ -325,13 +317,16 @@ impl fmt::Debug for Expr {
                 }
                 write!(f, ")")
             }
-            Self::Match(x) => {
+            Self::Match((_, x)) => {
                 write!(f, "{:?}", x)
             }
-            Self::Type((t, x)) => {
-                write!(f, "({:?} :: {:?})", x, t)
-            }
         }
+    }
+}
+
+impl Expr {
+    pub fn boxed(self) -> Box<Expr> {
+        Box::new(self)
     }
 }
 
@@ -342,15 +337,44 @@ pub struct SymbolBinding {
     pub type_: Option<TypeScheme>,
     pub expr: Expr,
 }
+impl fmt::Debug for SymbolBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tag = if self.recursive { "rec" } else { "let" };
+        if let Some(type_) = &self.type_ {
+            write!(f, "{} {:?} : {:?}\n", tag, self.bind, type_)?;
+        }
+        write!(f, "{} {:?} = {:?}", tag, self.bind, self.expr)
+    }
+}
 #[derive(Clone, PartialEq, Eq)]
 pub enum Statement {
-    SymbolBinding(SymbolBinding),
-    CustomType(CustomTypeDefinition),
+    SymbolBinding((Span, SymbolBinding)),
+    CustomType((Span, CustomTypeDefinition)),
+}
+impl fmt::Debug for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SymbolBinding((_, x)) => {
+                write!(f, "{:?}", x)
+            }
+            Self::CustomType((_, x)) => {
+                write!(f, "{:?}", x)
+            }
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Module {
     pub statements: Vec<Statement>,
+}
+impl fmt::Debug for Module {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for st in &self.statements {
+            write!(f, "{:?}\n\n", st)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -592,7 +616,7 @@ impl Printer {
     }
     fn print(&mut self, expr: &Expr) {
         match expr {
-            Expr::Literal(x) => {
+            Expr::Literal((_, x)) => {
                 let s = match x {
                     Literal::Bool(true) => "True".to_owned(),
                     Literal::Bool(false) => "False".to_owned(),
@@ -600,10 +624,10 @@ impl Printer {
                 };
                 self.print_str(&s);
             }
-            Expr::Symbol(x) => {
+            Expr::Symbol((_, x)) => {
                 self.print_str(&x.0);
             }
-            Expr::VariantConstr(x) => {
+            Expr::VariantConstr((_, x)) => {
                 if let Some(arg) = &x.value {
                     self.print_str(&x.constr.0);
                     self.space();
@@ -612,12 +636,12 @@ impl Printer {
                     self.print_str(&x.constr.0);
                 }
             }
-            Expr::Appl(x) => {
+            Expr::Appl((_, x)) => {
                 self.print(&*x.func);
                 self.space();
                 self.print(&*x.arg);
             }
-            Expr::IfElse(x) => {
+            Expr::IfElse((_, x)) => {
                 self.print_str("if");
                 self.space();
                 self.print(&*x.expr);
@@ -631,7 +655,7 @@ impl Printer {
                 self.print(&*x.case_false);
                 self.indent_decr();
             }
-            Expr::Tuple(x) => {
+            Expr::Tuple((_, x)) => {
                 self.print_str("(");
                 for x in x.iter().take(1) {
                     self.print(x);
@@ -642,7 +666,7 @@ impl Printer {
                 }
                 self.print_str(")");
             }
-            Expr::Let(x) => {
+            Expr::Let((_, x)) => {
                 self.print_str("let");
                 self.space();
 
@@ -656,8 +680,8 @@ impl Printer {
                 self.newline();
                 self.print(&x.next_expr);
             }
-            Expr::Function(x) => {
-                self.print_str("(\\");
+            Expr::Function((_, x)) => {
+                self.print_str("(fn ");
                 self.print_str(&format!("{:?}", x.bind));
                 self.space();
                 self.print_str("->");
@@ -666,39 +690,30 @@ impl Printer {
                 self.indent_decr();
                 self.print_str(")");
             }
-            Expr::Match(x) => {
+            Expr::Match((_, x)) => {
                 self.print_str("match ");
                 self.print(&*x.expr);
-                self.print_str(" with");
                 self.indent_incr();
                 for c in &x.cases {
-                    self.print_str(&format!("{:?}", c.pattern));
+                    self.print_str(&format!("| {:?}", c.pattern));
                     self.space();
                     self.print_str("->");
                     self.space();
                     self.print(&c.expr);
-                    self.print_str(",");
                     self.newline();
                 }
                 self.indent_decr();
-            }
-            Expr::Type((t, x)) => {
-                self.print_str("(");
-                self.print(x);
-                self.print_str(" :: ");
-                self.print_str(&format!("{:?}", t));
-                self.print_str(")");
             }
         }
     }
     fn print_statement(&mut self, st: &Statement) {
         match st {
             Statement::SymbolBinding(st) => {
-                let decl_sym = if st.recursive { "rec" } else { "let" };
-                if let Some(type_) = &st.type_ {
+                let decl_sym = if st.1.recursive { "rec" } else { "let" };
+                if let Some(type_) = &st.1.type_ {
                     self.print_str(decl_sym);
                     self.space();
-                    self.print_str(&st.bind.0);
+                    self.print_str(&st.1.bind.0);
                     self.space();
                     self.print_str(":");
                     self.space();
@@ -707,11 +722,11 @@ impl Printer {
                 }
                 self.print_str(decl_sym);
                 self.space();
-                self.print_str(&st.bind.0);
+                self.print_str(&st.1.bind.0);
                 self.space();
                 self.print_str("=");
                 self.space();
-                self.print(&st.expr);
+                self.print(&st.1.expr);
             }
             Statement::CustomType(t) => {
                 self.print_str(&format!("{:?}", t));

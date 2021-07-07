@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use interpreter as inter;
 use io::prelude::*;
 use prelude::{sym, Symbol};
 use std::collections::HashMap;
@@ -14,8 +13,9 @@ fn main() {
     let mut module: ast::Module = {
         let prelude: &str = include_str!("./prelude");
         let src: &str = include_str!("./program");
-        parser::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
+        parser_v2::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
     };
+    println!("module:\n{:?}\n", module);
     {
         use trc::Error;
         let mut ctx = trc::SymbolTypeContext::new();

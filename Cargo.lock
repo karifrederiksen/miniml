@@ -58,27 +58,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 
 [[package]]
-name = "interpreter"
-version = "0.1.0"
-dependencies = [
- "ast",
- "prelude",
-]
-
-[[package]]
 name = "js_backend"
 version = "0.1.0"
 dependencies = [
  "ast",
- "prelude",
-]
-
-[[package]]
-name = "lexer"
-version = "0.1.0"
-dependencies = [
- "ast",
- "logos",
  "prelude",
 ]
 
@@ -130,10 +113,9 @@ name = "miniml"
 version = "0.1.0"
 dependencies = [
  "ast",
- "interpreter",
  "js_backend",
- "lexer",
  "parser",
+ "parser_v2",
  "prelude",
  "type_recon",
 ]
@@ -157,6 +139,15 @@ version = "0.1.0"
 dependencies = [
  "ast",
  "nom",
+ "prelude",
+]
+
+[[package]]
+name = "parser_v2"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "logos",
  "prelude",
 ]
 

@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Symbol(pub String);
@@ -28,4 +30,38 @@ pub fn u32_to_ascii(n: u32) -> String {
         n = n / 26;
     }
     s.chars().rev().collect()
+}
+
+pub type Span = core::ops::Range<u32>;
+
+#[derive(Debug, Clone)]
+pub struct Sourced<A> {
+    pub val: A,
+    pub source: Span,
+}
+
+impl<A: PartialEq> PartialEq for Sourced<A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.val == other.val
+    }
+}
+
+impl<A: PartialEq> Eq for Sourced<A> {}
+
+impl<A: PartialOrd> PartialOrd for Sourced<A> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.val.partial_cmp(&other.val)
+    }
+}
+
+impl<A: Ord> Ord for Sourced<A> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.val.cmp(&other.val)
+    }
+}
+
+impl<A: Hash> Hash for Sourced<A> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.val.hash(state);
+    }
 }

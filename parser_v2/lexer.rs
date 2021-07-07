@@ -1,6 +1,5 @@
 use logos::{Lexer, Logos};
-
-pub type Span = core::ops::Range<u32>;
+use prelude::Span;
 
 fn span(lex: &mut Lexer<Token>) -> Span {
     let span = lex.span();
@@ -42,16 +41,14 @@ pub enum Token {
     Rec(Span),
     #[token("in", span)]
     In(Span),
+    #[token("if", span)]
+    If(Span),
     #[token("then", span)]
     Then(Span),
     #[token("else", span)]
     Else(Span),
-    #[token("fn", span)]
-    Fn(Span),
     #[token("match", span)]
     Match(Span),
-    #[token("with", span)]
-    With(Span),
     #[token("type", span)]
     Type(Span),
     #[token("\\", span)]
@@ -61,7 +58,7 @@ pub enum Token {
     #[token(",", span)]
     Comma(Span),
     #[token(":", span)]
-    SemiColon(Span),
+    Colon(Span),
     #[token("|", span)]
     VerticalBar(Span),
     #[token("->", span)]
@@ -74,16 +71,18 @@ pub enum Token {
     RParens(Span),
     #[regex(" +", span)]
     Space(Span),
-    #[regex("\n+", span)]
+    #[regex("\n", span)]
     Newline(Span),
-    #[regex("[a-z_][a-z0-9_]+", string)]
+    #[regex("[a-z_][a-z0-9_]*", string)]
     SymbolLower(Box<(Span, String)>),
-    #[regex("[A-Z][a-z0-9]+", string)]
+    #[regex("[A-Z][a-z0-9]*", string)]
     SymbolUpper(Box<(Span, String)>),
     #[regex(r"-?[0-9]+\.[0-9]+", float)]
     LiteralFloat(Box<(Span, f64)>),
     #[regex("-?[0-9]+", int)]
     LiteralInt(Box<(Span, i64)>),
+    #[regex("--.*\n", string)]
+    Comment(Box<(Span, String)>),
 
     #[error]
     #[regex(r"[\t\r\f]+", logos::skip)]
@@ -104,16 +103,15 @@ impl Token {
             Token::Let(x) => x.clone(),
             Token::Rec(x) => x.clone(),
             Token::In(x) => x.clone(),
+            Token::If(x) => x.clone(),
             Token::Then(x) => x.clone(),
             Token::Else(x) => x.clone(),
-            Token::Fn(x) => x.clone(),
             Token::Match(x) => x.clone(),
-            Token::With(x) => x.clone(),
             Token::Type(x) => x.clone(),
             Token::Backslash(x) => x.clone(),
             Token::Equals(x) => x.clone(),
             Token::Comma(x) => x.clone(),
-            Token::SemiColon(x) => x.clone(),
+            Token::Colon(x) => x.clone(),
             Token::VerticalBar(x) => x.clone(),
             Token::ArrowSkinny(x) => x.clone(),
             Token::ArrowFat(x) => x.clone(),
@@ -121,11 +119,45 @@ impl Token {
             Token::RParens(x) => x.clone(),
             Token::Space(x) => x.clone(),
             Token::Newline(x) => x.clone(),
+            Token::Comment(x) => x.0.clone(),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Token::Error => "".to_owned(),
+            Token::SymbolLower(x) | Token::SymbolUpper(x) => x.1.clone(),
+            Token::LiteralFloat(x) => format!("{}", &x.1),
+            Token::LiteralInt(x) => format!("{}", &x.1),
+            Token::TypeInt(_) => "Int".to_owned(),
+            Token::TypeBool(_) => "Bool".to_owned(),
+            Token::ConstrTrue(_) => "True".to_owned(),
+            Token::ConstrFalse(_) => "False".to_owned(),
+            Token::Let(_) => "let".to_owned(),
+            Token::Rec(_) => "rec".to_owned(),
+            Token::In(_) => "in".to_owned(),
+            Token::If(_) => "if".to_owned(),
+            Token::Then(_) => "then".to_owned(),
+            Token::Else(_) => "else".to_owned(),
+            Token::Match(_) => "match".to_owned(),
+            Token::Type(_) => "type".to_owned(),
+            Token::Backslash(_) => "\\".to_owned(),
+            Token::Equals(_) => "=".to_owned(),
+            Token::Comma(_) => ",".to_owned(),
+            Token::Colon(_) => ":".to_owned(),
+            Token::VerticalBar(_) => "|".to_owned(),
+            Token::ArrowSkinny(_) => "->".to_owned(),
+            Token::ArrowFat(_) => "=>".to_owned(),
+            Token::LParens(_) => "(".to_owned(),
+            Token::RParens(_) => ")".to_owned(),
+            Token::Space(x) => " ".repeat((x.end - x.start) as usize).to_owned(),
+            Token::Newline(_) => "\n".to_owned(),
+            Token::Comment(x) => x.1.to_string(),
         }
     }
 }
 
-pub fn parse(s: &str) -> Vec<Token> {
+pub fn lex(s: &str) -> Vec<Token> {
     let t: Lexer<Token> = Token::lexer(s);
     let t: Vec<Token> = t.collect();
     t
