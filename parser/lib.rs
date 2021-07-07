@@ -488,22 +488,8 @@ fn parse_variant_definition<'a>(s: &'a str) -> IResult<&'a str, VariantDefinitio
         },
     ))
 }
-fn parse_variant<'a>(s: &'a str) -> IResult<&'a str, Variant> {
-    let mut p = map(
-        seq::tuple((
-            parse_camelcase_symbol,
-            branch::alt((
-                seq::preceded(space_lf1, map(parse_expr, |x| Some(Box::new(x)))),
-                success(None),
-            )),
-        )),
-        |(constr, value)| Variant { constr, value },
-    );
-    p(s)
-}
 fn parse_type_constr_expr(s: &str) -> IResult<&str, Expr> {
-    let mut p = map(parse_variant, |x| Expr::VariantConstr((Span::default(), x)));
-    p(s)
+    todo!()
 }
 
 fn parse_custom_type_statement<'a>(s: &'a str) -> IResult<&'a str, Statement> {

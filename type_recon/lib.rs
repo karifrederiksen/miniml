@@ -128,26 +128,6 @@ impl SymbolTypeContext {
                     None => todo!("undefined symbol: {:?}", x),
                 },
             },
-            Expr::VariantConstr((_, Variant { constr, value })) => {
-                match self.global_symbol_type_map.get(&constr) {
-                    Some(constr_t) => {
-                        let arg_t = match value {
-                            None => None,
-                            Some(x) => Some(self.infer_expr(gen, scope_bindings, subst, &*x)),
-                        };
-                        match (constr_t.instantiate(gen), arg_t) {
-                            (Type::Func(func_t), Some(arg_t)) => {
-                                let arg_t = arg_t?;
-                                subst.unify(func_t.arg.clone(), arg_t)?;
-                                Ok(subst.apply(func_t.return_))
-                            }
-                            (t, None) => Ok(t),
-                            (x, y) => todo!("this should be an error?\n {:?}\n {:?}", x, y),
-                        }
-                    }
-                    None => todo!("undefined variant constructor: {:?}", constr),
-                }
-            }
             Expr::Function((_, x)) => {
                 let (arg_t, arg_n) = self.infer_pattern(gen, scope_bindings, subst, &x.bind)?;
                 let return_t = self.infer_expr(gen, scope_bindings, subst, &*x.expr);

@@ -1,6 +1,10 @@
 TODO:
 
-* Replace panics with Error variants
+- Replace panics with Error variants
+- Clean up parsing code
+    - A parent parser should decide which child parser to use based on a lookahead.
+    - Currently each parser is responsible for parsing its own entirety, so the parent parser simply tries out all the child parsers until one succeeds.
+    - problem with this approach is that we don't know which of the child parsers' error should be returned when all of them fail.
 
 ==============
 

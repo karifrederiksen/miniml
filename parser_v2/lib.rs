@@ -185,13 +185,6 @@ fn token_vertical_bar(s: &[Token]) -> IResult<&[Token], ()> {
     }
 }
 
-fn variant_ctor(s: &[Token]) -> IResult<&[Token], (Span, Symbol)> {
-    match s {
-        [Token::SymbolUpper(x), rest @ ..] => Ok((rest, (x.0.clone(), Symbol(x.1.clone())))),
-        _ => Err(Error::A),
-    }
-}
-
 fn trivia0_except_newline(s: &[Token]) -> &[Token] {
     let mut s = s;
     loop {
@@ -264,16 +257,28 @@ fn pattern_variant(s: &[Token]) -> IResult<&[Token], (Span, a::VariantPattern)> 
 
 fn pattern_tuple(s: &[Token]) -> IResult<&[Token], (Span, Vec<a::Pattern>)> {
     let (s, start) = token_lparen(s)?;
-    let mut s = s;
-    let mut patterns = Vec::<a::Pattern>::new();
-    loop {
-        let (s_, pat) = match pattern(s) {
-            Err(_) => break,
-            Ok((s, (_, pat))) => (s, pat),
-        };
-        s = s_;
-        patterns.push(pat);
-    }
+    let (s, patterns) = if let Ok((s, (_, first_pat))) = pattern(s) {
+        let mut s = s;
+        let mut patterns = vec![first_pat];
+
+        loop {
+            let s_ = trivia0(s);
+            let s_ = match token_comma(s_) {
+                Err(_) => break,
+                Ok((s, _)) => s,
+            };
+            let s_ = trivia0(s_);
+            let (s_, pat) = match pattern(s_) {
+                Err(_) => break,
+                Ok((s, (_, pat))) => (s, pat),
+            };
+            s = s_;
+            patterns.push(pat);
+        }
+        (s, patterns)
+    } else {
+        (s, vec![])
+    };
     let (s, end) = token_rparen(s)?;
     let range = Span {
         start: start.start,
@@ -286,11 +291,11 @@ fn pattern(s: &[Token]) -> IResult<&[Token], (Span, a::Pattern)> {
     if let Ok((s, x)) = token_symbol_lower(s) {
         return Ok((s, (x.0.clone(), a::Pattern::Symbol(x))));
     }
-    if let Ok((s, x)) = pattern_variant(s) {
-        return Ok((s, (x.0.clone(), a::Pattern::Variant(x))));
-    }
     if let Ok((s, x)) = pattern_tuple(s) {
         return Ok((s, (x.0.clone(), a::Pattern::Tuple(x))));
+    }
+    if let Ok((s, x)) = pattern_variant(s) {
+        return Ok((s, (x.0.clone(), a::Pattern::Variant(x))));
     }
     return Err(Error::A);
 }
@@ -438,25 +443,27 @@ fn let_(s: &[Token]) -> IResult<&[Token], (Span, a::Let)> {
 
 fn expr(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
     let (s, (start, e)) = expr_inner(s)?;
-    match expr_appl(s) {
-        Err(_) => Ok((s, (start, e))),
-        Ok((s, (end, arg))) => {
-            let range = Span {
-                start: start.start,
-                end: end.end,
-            };
-            let val = a::Appl {
-                func: e.boxed(),
-                arg: arg.boxed(),
-            };
-            Ok((s, (range.clone(), a::Expr::Appl((range, val)))))
-        }
+    let mut e = e;
+    let mut s = s;
+    let mut range = start;
+    loop {
+        let s_ = match trivia1(s) {
+            Err(_) => break,
+            Ok((s, _)) => s,
+        };
+        let (s_, (end, arg)) = match expr_inner(s_) {
+            Err(_) => break,
+            Ok(x) => x,
+        };
+        let val = a::Appl {
+            func: e.boxed(),
+            arg: arg.boxed(),
+        };
+        range.end = end.end;
+        e = a::Expr::Appl((range.clone(), val));
+        s = s_;
     }
-}
-
-fn expr_appl(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
-    let (s, ()) = trivia1(s)?;
-    expr(s)
+    Ok((s, (range, e)))
 }
 
 fn expr_inner(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
@@ -466,16 +473,11 @@ fn expr_inner(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
     if let Ok((s, x)) = token_symbol_lower(s) {
         return Ok((s, (x.0.clone(), a::Expr::Symbol(x))));
     }
+    if let Ok((s, x)) = token_symbol_upper(s) {
+        return Ok((s, (x.0.clone(), a::Expr::Symbol(x))));
+    }
     if let Ok((s, x)) = function(s) {
         return Ok((s, x));
-    }
-    if let Ok((s, x)) = variant_ctor(s) {
-        let var = a::Variant {
-            constr: x.1,
-            value: None,
-        };
-        println!("3");
-        return Ok((s, (x.0.clone(), a::Expr::VariantConstr((x.0, var)))));
     }
     if let Ok((s, x)) = if_else(s) {
         return Ok((s, (x.0.clone(), a::Expr::IfElse((x.0, x.1)))));
@@ -603,7 +605,7 @@ fn custom_type(s: &[Token]) -> IResult<&[Token], (Span, a::CustomTypeDefinition)
     let (s, start) = token_type(s)?;
     let (s, ()) = trivia1(s)?;
     let (s, (_, sym)) = token_symbol_upper(s)?;
-    let (s, params) = params_list(s);
+    let (s, params) = symbols(s);
     let s = trivia0(s);
     let (s, ()) = token_equal(s)?;
     let s = trivia0(s);
@@ -642,10 +644,8 @@ fn custom_type(s: &[Token]) -> IResult<&[Token], (Span, a::CustomTypeDefinition)
     Ok((s, (range, type_def)))
 }
 
-fn symbols_lower0(s: &[Token]) -> (&[Token], Span, Vec<Symbol>) {
-    println!("1");
+fn symbols(s: &[Token]) -> (&[Token], Option<(Span, Vec<Symbol>)>) {
     let mut syms = Vec::<Symbol>::new();
-    println!("2");
     let mut s = s;
     let mut range = Span::default();
     loop {
@@ -664,12 +664,6 @@ fn symbols_lower0(s: &[Token]) -> (&[Token], Span, Vec<Symbol>) {
         }
         range.end = end.end;
     }
-
-    (s, range, syms)
-}
-
-fn params_list(s: &[Token]) -> (&[Token], Option<(Span, Vec<Symbol>)>) {
-    let (s, range, syms) = symbols_lower0(s);
     if syms.len() == 0 {
         (s, None)
     } else {
@@ -677,19 +671,40 @@ fn params_list(s: &[Token]) -> (&[Token], Option<(Span, Vec<Symbol>)>) {
     }
 }
 
+fn patterns(s: &[Token]) -> (&[Token], Option<(Span, Vec<a::Pattern>)>) {
+    let mut patterns = Vec::<a::Pattern>::new();
+    let mut s = s;
+    let mut range = Span::default();
+    loop {
+        let s_ = match trivia1(s) {
+            Err(_) => break,
+            Ok((s, ())) => s,
+        };
+        let (s_, (end, pat)) = match pattern(s_) {
+            Err(_) => break,
+            Ok(x) => x,
+        };
+        s = s_;
+        patterns.push(pat);
+        if patterns.len() == 1 {
+            range.start = end.start;
+        }
+        range.end = end.end;
+    }
+    if patterns.len() == 0 {
+        (s, None)
+    } else {
+        (s, Some((range, patterns)))
+    }
+}
+
 fn global_binding(s: &[Token]) -> IResult<&[Token], (Span, a::SymbolBinding)> {
-    println!("a");
     let (s, (start, recursive)) = let_or_rec(s)?;
-    println!("b");
     let (s, ()) = trivia1(s)?;
-    println!("c");
     let (s, (_, sym)) = token_symbol_lower(s)?;
-    println!("d");
-    let (s, params) = params_list(s);
-    println!("e {:?}", params);
+    let (s, patterns) = patterns(s);
     let s = trivia0(s);
     let (s, ()) = token_equal(s)?;
-    println!("f");
     let s = trivia0(s);
     let (s, (end, e)) = expr(s)?;
     let range = Span {
@@ -697,12 +712,12 @@ fn global_binding(s: &[Token]) -> IResult<&[Token], (Span, a::SymbolBinding)> {
         end: end.end,
     };
     let mut e: a::Expr = e;
-    if let Some((_, params)) = params {
-        for p in params.into_iter().rev() {
+    if let Some((_, patterns)) = patterns {
+        for p in patterns.into_iter().rev() {
             e = a::Expr::Function((
                 range.clone(),
                 a::Function {
-                    bind: a::Pattern::Symbol((range.clone(), p)),
+                    bind: p,
                     expr: e.boxed(),
                 },
             ));
@@ -743,13 +758,7 @@ fn module(s: &[Token]) -> IResult<&[Token], (Span, a::Module)> {
     let mut range = start;
     loop {
         let (s_, (end, st)) = match module_statement(s) {
-            Err(err) => {
-                println!("==== rest ====");
-                println!("{}", s.iter().map(|x| x.to_string()).collect::<String>());
-                println!("==== tres ====");
-                println!("err: {:?}", err);
-                break;
-            }
+            Err(_) => break,
             Ok(x) => x,
         };
         range.end = end.end;

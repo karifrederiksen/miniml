@@ -195,14 +195,6 @@ impl Generator {
                     self.print("]");
                 }
             },
-            Expr::VariantConstr((_, x)) => {
-                self.print(&x.constr.0);
-                if let Some(y) = &x.value {
-                    self.print("(");
-                    self.generate_expr(&*y);
-                    self.print(")");
-                }
-            }
         };
     }
 

@@ -40,22 +40,6 @@ impl fmt::Debug for VariantDefinition {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct Variant {
-    pub constr: Symbol,
-    pub value: Option<Box<Expr>>,
-}
-impl fmt::Debug for Variant {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(val) = &self.value {
-            write!(f, "({:?} {:?})", self.constr, val)?;
-        } else {
-            write!(f, "{:?}", self.constr)?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CustomTypeSymbol(pub String);
 
@@ -158,11 +142,6 @@ impl Function {
             Expr::Symbol((_, x)) => {
                 if let Some(val) = symbols.get(x) {
                     *e = val.clone();
-                }
-            }
-            Expr::VariantConstr((_, x)) => {
-                if let Some(val) = &mut x.value {
-                    Self::replace_bound_expr(val, symbols);
                 }
             }
             Expr::Literal(_) => (),
@@ -268,7 +247,6 @@ pub struct MatchCase {
 #[derive(Clone, PartialEq, Eq)]
 pub enum Expr {
     Symbol((Span, Symbol)),
-    VariantConstr((Span, Variant)),
     Literal((Span, Literal)),
     Function((Span, Function)),
     Let((Span, Let)),
@@ -283,14 +261,6 @@ impl fmt::Debug for Expr {
         match self {
             Self::Symbol((_, x)) => {
                 write!(f, "{:?}", x)
-            }
-            Self::VariantConstr((_, x)) => {
-                if let Some(arg) = &x.value {
-                    write!(f, "({:?} {:?})", x.constr, arg)?;
-                } else {
-                    write!(f, "{:?}", x.constr)?;
-                }
-                Ok(())
             }
             Self::Literal((_, x)) => {
                 write!(f, "{:?}", x)
@@ -626,15 +596,6 @@ impl Printer {
             }
             Expr::Symbol((_, x)) => {
                 self.print_str(&x.0);
-            }
-            Expr::VariantConstr((_, x)) => {
-                if let Some(arg) = &x.value {
-                    self.print_str(&x.constr.0);
-                    self.space();
-                    self.print(arg);
-                } else {
-                    self.print_str(&x.constr.0);
-                }
             }
             Expr::Appl((_, x)) => {
                 self.print(&*x.func);
