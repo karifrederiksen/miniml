@@ -1,4 +1,5 @@
 #![feature(iter_intersperse)]
+#![feature(box_patterns)]
 #[allow(dead_code)]
 mod lexer;
 use ast as a;
@@ -7,180 +8,47 @@ use prelude::*;
 
 // Use the bottom-up method
 
+type Idx = u32;
+
 #[derive(Debug)]
 enum Error {
     A,
+    B(String),
+}
+
+fn err<A: Into<String>>(s: A) -> Error {
+    Error::B(s.into())
 }
 
 type IResult<I, O> = Result<(I, O), Error>;
 
-fn token_newline(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::Newline(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-fn token_comment(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::Comment(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_backslash(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::Backslash(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_skinnyarrow(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::ArrowSkinny(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_if(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::If(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_then(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::Then(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_else(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::Else(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_match(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::Match(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_let(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::Let(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_rec(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::Rec(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_equal(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::Equals(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_in(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::In(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_type(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::Type(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_lparen(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::LParens(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_rparen(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::RParens(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_comma(s: &[Token]) -> IResult<&[Token], Span> {
-    match s {
-        [Token::Comma(span), rest @ ..] => Ok((rest, span.clone())),
-        _ => Err(Error::A),
-    }
-}
-fn token_space(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::Space(_), rest @ ..] => Ok((rest, ())),
-        _ => Err(Error::A),
-    }
-}
-
-fn literal(s: &[Token]) -> IResult<&[Token], (Span, a::Literal)> {
-    match s {
-        [Token::LiteralInt(x), rest @ ..] => {
-            Ok((rest, (x.0.clone(), a::Literal::Int(x.1 as i128))))
-        }
-        [Token::ConstrTrue(x), rest @ ..] => Ok((rest, (x.clone(), a::Literal::Bool(true)))),
-        [Token::ConstrFalse(x), rest @ ..] => Ok((rest, (x.clone(), a::Literal::Bool(false)))),
-        _ => Err(Error::A),
-    }
-}
-
-fn function(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
-    let (s, start) = token_backslash(s)?;
+fn expr_function(s: &[Token]) -> IResult<&[Token], (Idx, a::Function)> {
     let s = trivia0(s);
     let (s, (_, p)) = pattern(s)?;
     let s = trivia0(s);
-    let (s, ()) = token_skinnyarrow(s)?;
+    let s = match s {
+        [Token::ArrowSkinny(_), rest @ ..] => rest,
+        _ => return Err(err("Unexpected token")),
+    };
     let s = trivia0(s);
     let (s, (end, e)) = expr(s)?;
-    let range = Span {
-        start: start.start,
-        end: end.end,
+    let f = a::Function {
+        bind: p,
+        expr: e.boxed(),
     };
-    let f_expr = a::Expr::Function((
-        range.clone(),
-        a::Function {
-            bind: p,
-            expr: e.boxed(),
-        },
-    ));
-    Ok((s, (range, f_expr)))
+    Ok((s, (end.end, f)))
 }
 
 fn token_symbol_lower(s: &[Token]) -> IResult<&[Token], (Span, Symbol)> {
     match s {
-        [Token::SymbolLower(x), rest @ ..] => Ok((rest, (x.0.clone(), Symbol(x.1.clone())))),
+        [Token::SymbolLower(box (range, x)), rest @ ..] => Ok((rest, (range.clone(), x.clone()))),
         _ => Err(Error::A),
     }
 }
 
 fn token_symbol_upper(s: &[Token]) -> IResult<&[Token], (Span, Symbol)> {
     match s {
-        [Token::SymbolUpper(x), rest @ ..] => Ok((rest, (x.0.clone(), Symbol(x.1.clone())))),
-        _ => Err(Error::A),
-    }
-}
-
-fn token_vertical_bar(s: &[Token]) -> IResult<&[Token], ()> {
-    match s {
-        [Token::VerticalBar(_), rest @ ..] => Ok((rest, ())),
+        [Token::SymbolUpper(box (range, x)), rest @ ..] => Ok((rest, (range.clone(), x.clone()))),
         _ => Err(Error::A),
     }
 }
@@ -188,12 +56,9 @@ fn token_vertical_bar(s: &[Token]) -> IResult<&[Token], ()> {
 fn trivia0_except_newline(s: &[Token]) -> &[Token] {
     let mut s = s;
     loop {
-        s = if let Ok((s, _)) = token_space(s) {
-            s
-        } else if let Ok((s, _)) = token_comment(s) {
-            s
-        } else {
-            break;
+        s = match s {
+            [Token::Space(_) | Token::Comment(_), rest @ ..] => rest,
+            _ => break,
         };
     }
     s
@@ -202,34 +67,28 @@ fn trivia0_except_newline(s: &[Token]) -> &[Token] {
 fn trivia0(s: &[Token]) -> &[Token] {
     let mut s = s;
     loop {
-        s = if let Ok((s_, ())) = token_newline(s) {
-            s_
-        } else if let Ok((s_, ())) = token_space(s) {
-            s_
-        } else if let Ok((s_, ())) = token_comment(s) {
-            s_
-        } else {
-            break;
+        s = match s {
+            [Token::Newline(_) | Token::Space(_) | Token::Comment(_), rest @ ..] => rest,
+            _ => break,
         };
     }
     s
 }
 
 fn trivia1(s: &[Token]) -> IResult<&[Token], ()> {
-    if let Ok((s, _)) = token_space(s) {
-        return Ok((trivia0(s), ()));
+    match s {
+        [Token::Newline(_) | Token::Space(_) | Token::Comment(_), rest @ ..] => {
+            Ok((trivia0(rest), ()))
+        }
+        _ => Err(err("unexpected token. expected 1 or more trivia")),
     }
-    if let Ok((s, _)) = token_newline(s) {
-        return Ok((trivia0(s), ()));
-    }
-    if let Ok((s, _)) = token_comment(s) {
-        return Ok((trivia0(s), ()));
-    }
-    Err(Error::A)
 }
 
-fn pattern_variant(s: &[Token]) -> IResult<&[Token], (Span, a::VariantPattern)> {
-    let (s, (start, constr)) = token_symbol_upper(s)?;
+fn pattern_variant(
+    constr: Symbol,
+    start: Span,
+    s: &[Token],
+) -> IResult<&[Token], (Span, a::VariantPattern)> {
     if let Ok((s, ())) = trivia1(s) {
         if let Ok((s, (end, pat))) = pattern(s) {
             let range = Span {
@@ -255,107 +114,81 @@ fn pattern_variant(s: &[Token]) -> IResult<&[Token], (Span, a::VariantPattern)> 
     ));
 }
 
-fn pattern_tuple(s: &[Token]) -> IResult<&[Token], (Span, Vec<a::Pattern>)> {
-    let (s, start) = token_lparen(s)?;
-    let (s, patterns) = if let Ok((s, (_, first_pat))) = pattern(s) {
-        let mut s = s;
-        let mut patterns = vec![first_pat];
-
-        loop {
-            let s_ = trivia0(s);
-            let s_ = match token_comma(s_) {
-                Err(_) => break,
-                Ok((s, _)) => s,
-            };
-            let s_ = trivia0(s_);
-            let (s_, pat) = match pattern(s_) {
-                Err(_) => break,
-                Ok((s, (_, pat))) => (s, pat),
-            };
-            s = s_;
-            patterns.push(pat);
-        }
-        (s, patterns)
-    } else {
-        (s, vec![])
+fn pattern_tuple(s: &[Token]) -> IResult<&[Token], (Idx, Vec<a::Pattern>)> {
+    let s = trivia0(s);
+    if let [Token::RParens(end), s @ ..] = s {
+        return Ok((s, (end.end, vec![])));
+    }
+    let (s, (_, first_pat)) = pattern(s)?;
+    let mut patterns = vec![first_pat];
+    let mut s = s;
+    let end = loop {
+        let s_ = trivia0(s);
+        let s_ = match s_ {
+            [Token::RParens(end), s_ @ ..] => {
+                s = s_;
+                break end.end;
+            }
+            [Token::Comma(_), s @ ..] => s,
+            _ => return Err(Error::A),
+        };
+        let s_ = trivia0(s_);
+        let (s_, (_, pat)) = pattern(s_)?;
+        s = s_;
+        patterns.push(pat);
     };
-    let (s, end) = token_rparen(s)?;
-    let range = Span {
-        start: start.start,
-        end: end.end,
-    };
-    Ok((s, (range, patterns)))
+    Ok((s, (end, patterns)))
 }
 
 fn pattern(s: &[Token]) -> IResult<&[Token], (Span, a::Pattern)> {
-    if let Ok((s, x)) = token_symbol_lower(s) {
-        return Ok((s, (x.0.clone(), a::Pattern::Symbol(x))));
-    }
-    if let Ok((s, x)) = pattern_tuple(s) {
-        return Ok((s, (x.0.clone(), a::Pattern::Tuple(x))));
-    }
-    if let Ok((s, x)) = pattern_variant(s) {
-        return Ok((s, (x.0.clone(), a::Pattern::Variant(x))));
-    }
-    return Err(Error::A);
-}
-
-fn if_else(s: &[Token]) -> IResult<&[Token], (Span, a::IfElse)> {
-    let (s, start) = token_if(s)?;
-    let (s, ()) = trivia1(s)?;
-    let (s, (_, cond)) = expr(s)?;
-    let (s, ()) = trivia1(s)?;
-    let (s, ()) = token_then(s)?;
-    let (s, ()) = trivia1(s)?;
-    let (s, (_, case_true)) = expr(s)?;
-    let (s, ()) = trivia1(s)?;
-    let (s, ()) = token_else(s)?;
-    let (s, ()) = trivia1(s)?;
-    let (s, (end, case_false)) = expr(s)?;
-    let range = Span {
-        start: start.start,
-        end: end.end,
-    };
-    let val = a::IfElse {
-        expr: cond.boxed(),
-        case_true: case_true.boxed(),
-        case_false: case_false.boxed(),
-    };
-    Ok((s, (range, val)))
-}
-
-fn tuple(s: &[Token]) -> IResult<&[Token], (Span, Vec<a::Expr>)> {
-    let (s, start) = token_lparen(s)?;
-    let s = trivia0(s);
-    let mut exprs = Vec::new();
-    let (s, end) = match expr(s) {
-        Err(_) => token_rparen(s)?,
-        Ok((s, (_, e))) => {
-            let mut s = s;
-            exprs.push(e);
-            loop {
-                s = trivia0(s);
-                if let Ok(x) = token_rparen(s) {
-                    break x;
-                } else {
-                    s = token_comma(s)?.0;
-                    s = trivia0(s);
-                    let (s_, (_, e)) = expr(s)?;
-                    s = s_;
-                    exprs.push(e);
-                }
-            }
+    match s {
+        [Token::SymbolLower(box (range, sym)), s @ ..] => {
+            let p = a::Pattern::Symbol((range.clone(), sym.clone()));
+            Ok((s, (range.clone(), p)))
         }
-    };
-    let range = Span {
-        start: start.start,
-        end: end.end,
-    };
-    Ok((s, (range, exprs)))
+        [Token::LParens(start), s @ ..] => {
+            let (s, (end, x)) = pattern_tuple(s)?;
+            let range = Span {
+                start: start.start,
+                end,
+            };
+            Ok((s, (range.clone(), a::Pattern::Tuple((range, x)))))
+        }
+        [Token::SymbolUpper(box (start, constr)), s @ ..] => {
+            let (s, x) = pattern_variant(constr.clone(), start.clone(), s)?;
+            Ok((s, (x.0.clone(), a::Pattern::Variant(x))))
+        }
+        _ => Err(Error::A),
+    }
 }
 
-fn match_(s: &[Token]) -> IResult<&[Token], (Span, a::Match)> {
-    let (s, start) = token_match(s)?;
+fn expr_tuple(s: &[Token]) -> IResult<&[Token], (Idx, Vec<a::Expr>)> {
+    let s = trivia0(s);
+    if let [Token::RParens(end), s @ ..] = s {
+        return Ok((s, (end.end, vec![])));
+    }
+    let (s, (_, first_expr)) = expr(s)?;
+    let mut exprs = vec![first_expr];
+    let mut s = s;
+    let end = loop {
+        let s_ = trivia0(s);
+        let s_ = match s_ {
+            [Token::RParens(end), s_ @ ..] => {
+                s = s_;
+                break end.end;
+            }
+            [Token::Comma(_), s @ ..] => s,
+            _ => return Err(Error::A),
+        };
+        let s_ = trivia0(s_);
+        let (s_, (_, e)) = expr(s_)?;
+        s = s_;
+        exprs.push(e);
+    };
+    Ok((s, (end, exprs)))
+}
+
+fn expr_match(s: &[Token]) -> IResult<&[Token], (Idx, a::Match)> {
     let (s, ()) = trivia1(s)?;
     let (s, (_, e)) = expr(s)?;
     let (s, ()) = trivia1(s)?;
@@ -365,25 +198,21 @@ fn match_(s: &[Token]) -> IResult<&[Token], (Span, a::Match)> {
         let mut s = s;
         loop {
             let s_ = trivia0(s);
-            match match_branch(s_) {
-                Err(_) => break,
-                Ok((s_, (end_, branch))) => {
-                    branches.push(branch);
-                    s = s_;
-                    end = end_;
-                }
+            let s_ = match s_ {
+                [Token::VerticalBar(_), rest @ ..] => rest,
+                _ => break,
             };
+            let (s_, (end_, branch)) = match_branch(s_)?;
+            branches.push(branch);
+            s = s_;
+            end = end_;
         }
         (s, end)
-    };
-    let range = Span {
-        start: start.start,
-        end: end.end,
     };
     Ok((
         s,
         (
-            range,
+            end.end,
             a::Match {
                 expr: e.boxed(),
                 cases: branches,
@@ -393,11 +222,13 @@ fn match_(s: &[Token]) -> IResult<&[Token], (Span, a::Match)> {
 }
 
 fn match_branch(s: &[Token]) -> IResult<&[Token], (Span, a::MatchCase)> {
-    let (s, ()) = token_vertical_bar(s)?;
     let s = trivia0(s);
     let (s, (_, pat)) = pattern(s)?;
     let s = trivia0(s);
-    let (s, ()) = token_skinnyarrow(s)?;
+    let s = match s {
+        [Token::ArrowSkinny(_), rest @ ..] => rest,
+        _ => return Err(err("expected '->', found something else")),
+    };
     let s = trivia0(s);
     let (s, (end, e)) = expr(s)?;
     Ok((
@@ -412,33 +243,121 @@ fn match_branch(s: &[Token]) -> IResult<&[Token], (Span, a::MatchCase)> {
     ))
 }
 
-fn let_or_rec(s: &[Token]) -> IResult<&[Token], (Span, bool)> {
-    if let Ok((s, range)) = token_let(s) {
-        return Ok((s, (range, false)));
-    }
-    if let Ok((s, range)) = token_rec(s) {
-        return Ok((s, (range, true)));
-    }
-    return Err(Error::A);
-}
-
-fn let_(s: &[Token]) -> IResult<&[Token], (Span, a::Let)> {
-    let (s, start) = token_let(s)?;
+fn expr_let(s: &[Token]) -> IResult<&[Token], (Idx, a::Let)> {
     let (s, (_, bind)) = pattern(s)?;
-    let (s, ()) = token_equal(s)?;
-    let (s, (_, bind_expr)) = expr(s)?;
-    let (s, ()) = token_in(s)?;
-    let (s, (end, next_expr)) = expr(s)?;
-    let range = Span {
-        start: start.start,
-        end: end.end,
+    let s = match s {
+        [Token::Equals(_), rest @ ..] => rest,
+        _ => return Err(err("expected '=', found something else")),
     };
+    let (s, (_, bind_expr)) = expr(s)?;
+    let s = match s {
+        [Token::In(_), rest @ ..] => rest,
+        _ => return Err(err("expected 'in', found something else")),
+    };
+    let (s, (end, next_expr)) = expr(s)?;
     let val = a::Let {
         bind: bind,
         bind_expr: bind_expr.boxed(),
         next_expr: next_expr.boxed(),
     };
-    Ok((s, (range, val)))
+    Ok((s, (end.end, val)))
+}
+
+fn expr_if(s: &[Token]) -> IResult<&[Token], (Idx, a::IfElse)> {
+    let (s, ()) = trivia1(s)?;
+    let (s, (_, cond)) = expr(s)?;
+    let (s, ()) = trivia1(s)?;
+    let s = match s {
+        [Token::Then(_), rest @ ..] => rest,
+        _ => return Err(err("expected 'then', found something else")),
+    };
+    let (s, ()) = trivia1(s)?;
+    let (s, (_, case_true)) = expr(s)?;
+    let (s, ()) = trivia1(s)?;
+    let s = match s {
+        [Token::Else(_), rest @ ..] => rest,
+        _ => return Err(err("expected 'else', found something else")),
+    };
+    let (s, ()) = trivia1(s)?;
+    let (s, (end, case_false)) = expr(s)?;
+    let val = a::IfElse {
+        expr: cond.boxed(),
+        case_true: case_true.boxed(),
+        case_false: case_false.boxed(),
+    };
+    Ok((s, (end.end, val)))
+}
+
+fn expr_inner(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
+    match s {
+        [Token::If(start), s @ ..] => {
+            let (s, (end, val)) = expr_if(s)?;
+            let range = Span {
+                start: start.start,
+                end: end,
+            };
+            let e = a::Expr::IfElse((range.clone(), val));
+            Ok((s, (range, e)))
+        }
+        [Token::LiteralInt(box (range, n)), s @ ..] => {
+            let e = a::Expr::Literal((range.clone(), a::Literal::Int(*n as i128)));
+            Ok((s, (range.clone(), e)))
+        }
+        [Token::LiteralFloat(box (_range, _n)), _s @ ..] => {
+            todo!()
+        }
+        [Token::ConstrTrue(range), s @ ..] => {
+            let e = a::Expr::Literal((range.clone(), a::Literal::Bool(true)));
+            Ok((s, (range.clone(), e)))
+        }
+        [Token::ConstrFalse(range), s @ ..] => {
+            let e = a::Expr::Literal((range.clone(), a::Literal::Bool(false)));
+            Ok((s, (range.clone(), e)))
+        }
+        [Token::SymbolLower(box (range, sym)) | Token::SymbolUpper(box (range, sym)), s @ ..] => {
+            let e = a::Expr::Symbol((range.clone(), sym.clone()));
+            Ok((s, (range.clone(), e)))
+        }
+        [Token::Backslash(start), s @ ..] => {
+            let (s, (end, val)) = expr_function(s)?;
+            let range = Span {
+                start: start.start,
+                end: end,
+            };
+            let e = a::Expr::Function((range.clone(), val));
+            Ok((s, (range, e)))
+        }
+        [Token::LParens(start), s @ ..] => {
+            let (s, (end, val)) = expr_tuple(s)?;
+            let range = Span {
+                start: start.start,
+                end: end,
+            };
+            let e = a::Expr::Tuple((range.clone(), val));
+            Ok((s, (range, e)))
+        }
+        [Token::Let(start), s @ ..] => {
+            let (s, (end, val)) = expr_let(s)?;
+            let range = Span {
+                start: start.start,
+                end: end,
+            };
+            let e = a::Expr::Let((range.clone(), val));
+            Ok((s, (range, e)))
+        }
+        [Token::Match(start), s @ ..] => {
+            let (s, (end, val)) = expr_match(s)?;
+            let range = Span {
+                start: start.start,
+                end: end,
+            };
+            let e = a::Expr::Match((range.clone(), val));
+            Ok((s, (range, e)))
+        }
+        _ => Err(err(
+            "Unexpected token at position x1..x2. Expected something else",
+        )),
+    }
 }
 
 fn expr(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
@@ -466,34 +385,6 @@ fn expr(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
     Ok((s, (range, e)))
 }
 
-fn expr_inner(s: &[Token]) -> IResult<&[Token], (Span, a::Expr)> {
-    if let Ok((s, x)) = literal(s) {
-        return Ok((s, (x.0.clone(), a::Expr::Literal(x))));
-    }
-    if let Ok((s, x)) = token_symbol_lower(s) {
-        return Ok((s, (x.0.clone(), a::Expr::Symbol(x))));
-    }
-    if let Ok((s, x)) = token_symbol_upper(s) {
-        return Ok((s, (x.0.clone(), a::Expr::Symbol(x))));
-    }
-    if let Ok((s, x)) = function(s) {
-        return Ok((s, x));
-    }
-    if let Ok((s, x)) = if_else(s) {
-        return Ok((s, (x.0.clone(), a::Expr::IfElse((x.0, x.1)))));
-    }
-    if let Ok((s, x)) = tuple(s) {
-        return Ok((s, (x.0.clone(), a::Expr::Tuple((x.0, x.1)))));
-    }
-    if let Ok((s, x)) = let_(s) {
-        return Ok((s, (x.0.clone(), a::Expr::Let((x.0, x.1)))));
-    }
-    if let Ok((s, x)) = match_(s) {
-        return Ok((s, (x.0.clone(), a::Expr::Match((x.0, x.1)))));
-    }
-    return Err(Error::A);
-}
-
 fn type_sub_variant_args(s: &[Token]) -> (&[Token], Vec<a::Type>) {
     let mut s = s;
     let mut types = Vec::<a::Type>::new();
@@ -512,67 +403,89 @@ fn type_sub_variant_args(s: &[Token]) -> (&[Token], Vec<a::Type>) {
     (s, types)
 }
 
-fn type_sub(s: &[Token]) -> IResult<&[Token], (Span, a::Type)> {
-    if let Ok((s, (range, x))) = token_symbol_upper(s) {
-        let (s, t) = match x.0.as_ref() {
-            "Int" => (s, a::Type::Intrinsic(a::IntrinsicType::Int)),
-            "Bool" => (s, a::Type::Intrinsic(a::IntrinsicType::Bool)),
-            x => {
-                let (s, variables) = type_sub_variant_args(s);
-                (
-                    s,
-                    a::Type::Custom(a::CustomType {
-                        name: a::CustomTypeSymbol(x.to_string()),
-                        variables: variables,
-                    }),
-                )
-            }
-        };
-        return Ok((s, (range, t)));
-    }
-    if let Ok((s, (range, x))) = token_symbol_lower(s) {
-        let t: a::Type = a::Type::Var(a::VariableType(x.0.to_string()));
-        return Ok((s, (range, t)));
-    }
-    if let Ok((s, start)) = token_lparen(s) {
-        let mut types = Vec::<a::Type>::new();
-        let mut s = s;
-        if let Ok((s_, (_, t))) = type_(s) {
-            types.push(t);
-            s = s_;
+fn type_inner_upper<'a>(
+    x: &str,
+    start: Span,
+    s: &'a [Token],
+) -> IResult<&'a [Token], (Span, a::Type)> {
+    // TODO: get end idx for args
+    let (s, variables) = type_sub_variant_args(s);
+    Ok((
+        s,
+        (
+            start,
+            a::Type::Custom(a::CustomType {
+                name: a::CustomTypeSymbol(x.to_string()),
+                variables: variables,
+            }),
+        ),
+    ))
+}
 
-            loop {
-                let s_ = trivia0(s);
-                let s_ = match token_comma(s_) {
-                    Err(_) => break,
-                    Ok((s, _)) => s,
-                };
-                let s_ = trivia0(s_);
-                match type_(s_) {
-                    Err(_) => break,
-                    Ok((s_, (_, t))) => {
-                        types.push(t);
-                        s = s_;
-                    }
-                };
-            }
-        }
-        let s = trivia0(s);
-        let (s, end) = token_rparen(s)?;
-        let range = Span {
-            start: start.start,
-            end: end.end,
-        };
-        let t = a::Type::Tuple(types);
-        return Ok((s, (range, t)));
+fn type_inner_tuple<'a>(s: &'a [Token]) -> IResult<&'a [Token], (Idx, Vec<a::Type>)> {
+    let s = trivia0(s);
+    if let [Token::RParens(end), s @ ..] = s {
+        return Ok((s, (end.end, vec![])));
     }
-    return Err(Error::A);
+    let (s, (_, first_type)) = type_(s)?;
+    let mut types = vec![first_type];
+    let mut s = s;
+    let end = loop {
+        let s_ = trivia0(s);
+        let s_ = match s_ {
+            [Token::RParens(end), s_ @ ..] => {
+                s = s_;
+                break end.end;
+            }
+            [Token::Comma(_), s @ ..] => s,
+            _ => return Err(Error::A),
+        };
+        let s_ = trivia0(s_);
+        let (s_, (_, t)) = type_(s_)?;
+        s = s_;
+        types.push(t);
+    };
+    Ok((s, (end, types)))
+}
+
+fn type_inner(s: &[Token]) -> IResult<&[Token], (Span, a::Type)> {
+    match s {
+        [Token::SymbolUpper(box (start, x)), s @ ..] => {
+            return match x.0.as_ref() {
+                "Int" => Ok((
+                    s,
+                    (start.clone(), a::Type::Intrinsic(a::IntrinsicType::Int)),
+                )),
+                "Bool" => Ok((
+                    s,
+                    (start.clone(), a::Type::Intrinsic(a::IntrinsicType::Bool)),
+                )),
+                x => type_inner_upper(x, start.clone(), s),
+            };
+        }
+        [Token::SymbolLower(box (range, x)), s @ ..] => {
+            let t: a::Type = a::Type::Var(a::VariableType(x.0.to_string()));
+            return Ok((s, (range.clone(), t)));
+        }
+        [Token::LParens(start), s @ ..] => {
+            let (s, (end, types)) = type_inner_tuple(s)?;
+            let t = a::Type::Tuple(types);
+            let range = Span {
+                start: start.start,
+                end,
+            };
+            return Ok((s, (range, t)));
+        }
+        _ => {
+            return Err(Error::A);
+        }
+    }
 }
 
 fn type_(s: &[Token]) -> IResult<&[Token], (Span, a::Type)> {
     // todo: lookahead
     //       if followed by an arrow, turn it into a function-type
-    type_sub(s)
+    type_inner(s)
 }
 
 fn custom_type_variant_type(s: &[Token]) -> IResult<&[Token], (Span, a::Type)> {
@@ -582,6 +495,7 @@ fn custom_type_variant_type(s: &[Token]) -> IResult<&[Token], (Span, a::Type)> {
 
 fn custom_type_variant(s: &[Token]) -> IResult<&[Token], (Span, a::VariantDefinition)> {
     let (s, (start, sym)) = token_symbol_upper(s)?;
+    // TODO cleanup
     let (s, t) = match custom_type_variant_type(s) {
         Err(_) => (s, None),
         Ok((s, (_, t))) => (s, Some(t)),
@@ -595,19 +509,16 @@ fn custom_type_variant(s: &[Token]) -> IResult<&[Token], (Span, a::VariantDefini
 
     Ok((s, (range, var)))
 }
-fn custom_type_variant2(s: &[Token]) -> IResult<&[Token], (Span, a::VariantDefinition)> {
-    let s = trivia0(s);
-    let (s, ()) = token_vertical_bar(s)?;
-    let s = trivia0(s);
-    custom_type_variant(s)
-}
-fn custom_type(s: &[Token]) -> IResult<&[Token], (Span, a::CustomTypeDefinition)> {
-    let (s, start) = token_type(s)?;
+
+fn custom_type(start: Idx, s: &[Token]) -> IResult<&[Token], (Span, a::CustomTypeDefinition)> {
     let (s, ()) = trivia1(s)?;
     let (s, (_, sym)) = token_symbol_upper(s)?;
     let (s, params) = symbols(s);
     let s = trivia0(s);
-    let (s, ()) = token_equal(s)?;
+    let s = match s {
+        [Token::Equals(_), rest @ ..] => rest,
+        _ => return Err(Error::A),
+    };
     let s = trivia0(s);
     let (s, (end, first_var)) = custom_type_variant(s)?;
     let mut s = s;
@@ -615,7 +526,13 @@ fn custom_type(s: &[Token]) -> IResult<&[Token], (Span, a::CustomTypeDefinition)
     let mut variants = vec![first_var];
 
     loop {
-        let (s_, (end_, next_var)) = match custom_type_variant2(s) {
+        let s_ = trivia0(s);
+        let s_ = match s_ {
+            [Token::VerticalBar(_), rest @ ..] => rest,
+            _ => return Err(Error::A),
+        };
+        let s_ = trivia0(s_);
+        let (s_, (end_, next_var)) = match custom_type_variant(s_) {
             Err(_) => break,
             Ok(x) => x,
         };
@@ -625,7 +542,7 @@ fn custom_type(s: &[Token]) -> IResult<&[Token], (Span, a::CustomTypeDefinition)
     }
 
     let range = Span {
-        start: start.start,
+        start: start,
         end: end.end,
     };
     let type_def = a::CustomTypeDefinition {
@@ -698,20 +615,26 @@ fn patterns(s: &[Token]) -> (&[Token], Option<(Span, Vec<a::Pattern>)>) {
     }
 }
 
-fn global_binding(s: &[Token]) -> IResult<&[Token], (Span, a::SymbolBinding)> {
-    let (s, (start, recursive)) = let_or_rec(s)?;
+fn global_binding(
+    start: Idx,
+    recursive: bool,
+    s: &[Token],
+) -> IResult<&[Token], (Span, a::SymbolBinding)> {
     let (s, ()) = trivia1(s)?;
     let (s, (_, sym)) = token_symbol_lower(s)?;
     let (s, patterns) = patterns(s);
     let s = trivia0(s);
-    let (s, ()) = token_equal(s)?;
+    let s = match s {
+        [Token::Equals(_), rest @ ..] => rest,
+        _ => return Err(Error::A),
+    };
     let s = trivia0(s);
     let (s, (end, e)) = expr(s)?;
+    let mut e: a::Expr = e;
     let range = Span {
-        start: start.start,
+        start: start,
         end: end.end,
     };
-    let mut e: a::Expr = e;
     if let Some((_, patterns)) = patterns {
         for p in patterns.into_iter().rev() {
             e = a::Expr::Function((
@@ -733,48 +656,62 @@ fn global_binding(s: &[Token]) -> IResult<&[Token], (Span, a::SymbolBinding)> {
     Ok((s, (range, bind)))
 }
 
-fn statement(s: &[Token]) -> IResult<&[Token], (Span, a::Statement)> {
-    if let Ok((s, x)) = global_binding(s) {
-        return Ok((s, (x.0.clone(), a::Statement::SymbolBinding((x.0, x.1)))));
+fn statement(s: &[Token]) -> IResult<&[Token], Option<a::Statement>> {
+    match s {
+        [Token::Let(range), s @ ..] => {
+            let (s, (range, x)) = global_binding(range.start, false, s)?;
+            let st = a::Statement::SymbolBinding((range, x));
+            Ok((s, Some(st)))
+        }
+        [Token::Rec(range), s @ ..] => {
+            let (s, (range, x)) = global_binding(range.start, true, s)?;
+            let st = a::Statement::SymbolBinding((range, x));
+            Ok((s, Some(st)))
+        }
+        [Token::Type(range), s @ ..] => {
+            let (s, (range, x)) = custom_type(range.start, s)?;
+            let st = a::Statement::CustomType((range, x));
+            Ok((s, Some(st)))
+        }
+        [] => Ok((s, None)),
+        _ => Err(err("unexpected token")),
     }
-    if let Ok((s, x)) = custom_type(s) {
-        return Ok((s, (x.0.clone(), a::Statement::CustomType((x.0, x.1)))));
-    }
-    return Err(Error::A);
 }
 
-fn module_statement(s: &[Token]) -> IResult<&[Token], (Span, a::Statement)> {
-    let s = trivia0_except_newline(s);
-    let (s, ()) = token_newline(s)?;
+fn module(s: &[Token]) -> IResult<&[Token], a::Module> {
     let s = trivia0(s);
-    statement(s)
-}
-
-fn module(s: &[Token]) -> IResult<&[Token], (Span, a::Module)> {
-    let s = trivia0(s);
-    let (s, (start, first_st)) = statement(s)?;
+    let (s, first_st) = match statement(s)? {
+        (s, Some(x)) => (s, x),
+        (s, None) => return Ok((s, a::Module { statements: vec![] })),
+    };
     let mut statements = vec![first_st];
     let mut s = s;
-    let mut range = start;
     loop {
-        let (s_, (end, st)) = match module_statement(s) {
-            Err(_) => break,
-            Ok(x) => x,
+        let s_ = trivia0_except_newline(s);
+        let s_ = match s_ {
+            [Token::Newline(_), rest @ ..] => rest,
+            _ => break,
         };
-        range.end = end.end;
+        let s_ = trivia0(s_);
+        let (s_, st) = match statement(s_)? {
+            (s, Some(x)) => (s, x),
+            (s_, None) => {
+                s = s_;
+                break;
+            }
+        };
         statements.push(st);
         s = s_;
     }
 
     let m = a::Module { statements };
-
-    Ok((s, (range, m)))
+    Ok((s, m))
 }
 
 pub fn parse_module(s: &str) -> Result<a::Module, String> {
     let tokens: Vec<Token> = lex(s);
     match module(&tokens) {
-        Ok((_, (_, e))) => Ok(e),
+        Ok((_, e)) => Ok(e),
         Err(_) => Err("oops".to_owned()),
     }
 }

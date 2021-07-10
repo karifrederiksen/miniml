@@ -15,6 +15,10 @@ impl Symbol {
     pub fn is_camelcase(&self) -> bool {
         self.0.chars().next().unwrap().is_uppercase()
     }
+
+    pub fn from<S: Into<String>>(x: S) -> Self {
+        Self(x.into())
+    }
 }
 
 pub fn sym<S: Into<String>>(x: S) -> Symbol {

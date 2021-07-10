@@ -1,5 +1,5 @@
 use logos::{Lexer, Logos};
-use prelude::Span;
+use prelude::{Span, Symbol};
 
 fn span(lex: &mut Lexer<Token>) -> Span {
     let span = lex.span();
@@ -23,6 +23,11 @@ fn string(lex: &mut Lexer<Token>) -> Box<(Span, String)> {
     let slice: &str = lex.slice();
     let s: String = slice.to_owned();
     Box::new((span(lex), s))
+}
+fn symbol(lex: &mut Lexer<Token>) -> Box<(Span, Symbol)> {
+    let slice: &str = lex.slice();
+    let s: String = slice.to_owned();
+    Box::new((span(lex), Symbol::from(s)))
 }
 
 #[derive(Logos, Debug, PartialEq)]
@@ -73,10 +78,10 @@ pub enum Token {
     Space(Span),
     #[regex("\n", span)]
     Newline(Span),
-    #[regex("[a-z_][a-z0-9_]*", string)]
-    SymbolLower(Box<(Span, String)>),
-    #[regex("[A-Z][a-z0-9]*", string)]
-    SymbolUpper(Box<(Span, String)>),
+    #[regex("[a-z_][a-z0-9_]*", symbol)]
+    SymbolLower(Box<(Span, Symbol)>),
+    #[regex("[A-Z][a-z0-9]*", symbol)]
+    SymbolUpper(Box<(Span, Symbol)>),
     #[regex(r"-?[0-9]+\.[0-9]+", float)]
     LiteralFloat(Box<(Span, f64)>),
     #[regex("-?[0-9]+", int)]
@@ -126,9 +131,9 @@ impl Token {
     pub fn to_string(&self) -> String {
         match self {
             Token::Error => "".to_owned(),
-            Token::SymbolLower(x) | Token::SymbolUpper(x) => x.1.clone(),
-            Token::LiteralFloat(x) => format!("{}", &x.1),
-            Token::LiteralInt(x) => format!("{}", &x.1),
+            Token::SymbolLower(box (_, x)) | Token::SymbolUpper(box (_, x)) => x.0.clone(),
+            Token::LiteralFloat(box (_, x)) => format!("{}", &x),
+            Token::LiteralInt(box (_, x)) => format!("{}", &x),
             Token::TypeInt(_) => "Int".to_owned(),
             Token::TypeBool(_) => "Bool".to_owned(),
             Token::ConstrTrue(_) => "True".to_owned(),
