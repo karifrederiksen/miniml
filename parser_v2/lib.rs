@@ -12,12 +12,16 @@ type Idx = u32;
 
 #[derive(Debug)]
 enum Error {
-    A,
     B(String),
 }
 
 fn err<A: Into<String>>(s: A) -> Error {
     Error::B(s.into())
+}
+
+fn err2<A: Into<String>>(s: A, s2: &[Token]) -> Error {
+    let rest: String = s2.iter().map(|x| x.to_string()).collect();
+    Error::B(format!("{}\n{}", s.into(), rest))
 }
 
 type IResult<I, O> = Result<(I, O), Error>;
@@ -42,14 +46,14 @@ fn expr_function(s: &[Token]) -> IResult<&[Token], (Idx, a::Function)> {
 fn token_symbol_lower(s: &[Token]) -> IResult<&[Token], (Span, Symbol)> {
     match s {
         [Token::SymbolLower(box (range, x)), rest @ ..] => Ok((rest, (range.clone(), x.clone()))),
-        _ => Err(Error::A),
+        _ => Err(err("token_symbol_lower")),
     }
 }
 
 fn token_symbol_upper(s: &[Token]) -> IResult<&[Token], (Span, Symbol)> {
     match s {
         [Token::SymbolUpper(box (range, x)), rest @ ..] => Ok((rest, (range.clone(), x.clone()))),
-        _ => Err(Error::A),
+        _ => Err(err("token_symbol_upper")),
     }
 }
 
@@ -130,7 +134,7 @@ fn pattern_tuple(s: &[Token]) -> IResult<&[Token], (Idx, Vec<a::Pattern>)> {
                 break end.end;
             }
             [Token::Comma(_), s @ ..] => s,
-            _ => return Err(Error::A),
+            _ => return Err(err("pattern_tuple: missing comma")),
         };
         let s_ = trivia0(s_);
         let (s_, (_, pat)) = pattern(s_)?;
@@ -158,7 +162,7 @@ fn pattern(s: &[Token]) -> IResult<&[Token], (Span, a::Pattern)> {
             let (s, x) = pattern_variant(constr.clone(), start.clone(), s)?;
             Ok((s, (x.0.clone(), a::Pattern::Variant(x))))
         }
-        _ => Err(Error::A),
+        _ => Err(err("pattern")),
     }
 }
 
@@ -178,7 +182,7 @@ fn expr_tuple(s: &[Token]) -> IResult<&[Token], (Idx, Vec<a::Expr>)> {
                 break end.end;
             }
             [Token::Comma(_), s @ ..] => s,
-            _ => return Err(Error::A),
+            _ => return Err(err("expr_tuple: missing comma")),
         };
         let s_ = trivia0(s_);
         let (s_, (_, e)) = expr(s_)?;
@@ -438,7 +442,7 @@ fn type_inner_tuple<'a>(s: &'a [Token]) -> IResult<&'a [Token], (Idx, Vec<a::Typ
                 break end.end;
             }
             [Token::Comma(_), s @ ..] => s,
-            _ => return Err(Error::A),
+            _ => return Err(err("type_inner_tuple: missing comma")),
         };
         let s_ = trivia0(s_);
         let (s_, (_, t)) = type_(s_)?;
@@ -477,7 +481,7 @@ fn type_inner(s: &[Token]) -> IResult<&[Token], (Span, a::Type)> {
             return Ok((s, (range, t)));
         }
         _ => {
-            return Err(Error::A);
+            return Err(err("type_inner"));
         }
     }
 }
@@ -517,7 +521,7 @@ fn custom_type(start: Idx, s: &[Token]) -> IResult<&[Token], (Span, a::CustomTyp
     let s = trivia0(s);
     let s = match s {
         [Token::Equals(_), rest @ ..] => rest,
-        _ => return Err(Error::A),
+        _ => return Err(err("custom_type: missing equals")),
     };
     let s = trivia0(s);
     let (s, (end, first_var)) = custom_type_variant(s)?;
@@ -529,7 +533,7 @@ fn custom_type(start: Idx, s: &[Token]) -> IResult<&[Token], (Span, a::CustomTyp
         let s_ = trivia0(s);
         let s_ = match s_ {
             [Token::VerticalBar(_), rest @ ..] => rest,
-            _ => return Err(Error::A),
+            _ => break,
         };
         let s_ = trivia0(s_);
         let (s_, (end_, next_var)) = match custom_type_variant(s_) {
@@ -626,7 +630,7 @@ fn global_binding(
     let s = trivia0(s);
     let s = match s {
         [Token::Equals(_), rest @ ..] => rest,
-        _ => return Err(Error::A),
+        _ => return Err(err("global_binding: missing equals")),
     };
     let s = trivia0(s);
     let (s, (end, e)) = expr(s)?;
@@ -712,7 +716,7 @@ pub fn parse_module(s: &str) -> Result<a::Module, String> {
     let tokens: Vec<Token> = lex(s);
     match module(&tokens) {
         Ok((_, e)) => Ok(e),
-        Err(_) => Err("oops".to_owned()),
+        Err(e) => Err(format!("oops {:?}", e)),
     }
 }
 
@@ -720,7 +724,7 @@ pub fn parse_expr(s: &str) -> Result<a::Expr, String> {
     let tokens: Vec<Token> = lex(s);
     match expr(&tokens) {
         Ok((_, (_, e))) => Ok(e),
-        Err(_) => Err("oops".to_owned()),
+        Err(e) => Err(format!("oopsie {:?}", e)),
     }
 }
 
