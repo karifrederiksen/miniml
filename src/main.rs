@@ -13,7 +13,7 @@ fn main() {
     let mut module: ast::Module = {
         let prelude: &str = include_str!("./prelude");
         let src: &str = include_str!("./program");
-        parser_v2::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
+        parser::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
     };
     println!("module:\n{:?}\n", module);
     {

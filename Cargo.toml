@@ -9,6 +9,6 @@ edition = "2018"
 [dependencies]
 prelude = { path = "prelude" }
 ast = { path = "ast" }
-parser_v2 = { path = "parser_v2" }
+parser = { path = "parser" }
 type_recon = { path = "type_recon" }
 js_backend = { path = "js_backend" }

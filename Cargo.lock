@@ -59,13 +59,13 @@ version = "0.1.0"
 dependencies = [
  "ast",
  "js_backend",
- "parser_v2",
+ "parser",
  "prelude",
  "type_recon",
 ]
 
 [[package]]
-name = "parser_v2"
+name = "parser"
 version = "0.1.0"
 dependencies = [
  "ast",
