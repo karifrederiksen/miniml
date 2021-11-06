@@ -86,7 +86,7 @@ pub enum Token {
     LiteralFloat(Box<(Span, f64)>),
     #[regex("-?[0-9]+", int)]
     LiteralInt(Box<(Span, i64)>),
-    #[regex("--.*\n", string)]
+    #[regex("#.*\n", string)]
     Comment(Box<(Span, String)>),
 
     #[error]

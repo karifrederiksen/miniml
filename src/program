@@ -5,7 +5,7 @@ let opt_map f x =
     | Some y -> Some (f y)
     | None -> None
 
--- let incr : Int -> Int
+# let incr : Int -> Int
 let incr = add 1
 
 rec fact n =
