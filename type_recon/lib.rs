@@ -6,11 +6,21 @@ use prelude::{sym, Symbol};
 use std::collections::HashMap;
 use std::fmt;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Error {
     NonExhaustiveMatch,
     TypeMismatch((Type, Type)),
     TupleArityMismatch,
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NonExhaustiveMatch => write!(f, "NonExhaustiveMatch"),
+            Self::TupleArityMismatch => write!(f, "TupleArityMismatch"),
+            Self::TypeMismatch((l, r)) => write!(f, "{} -> {}", print_type(l), print_type(r)),
+        }
+    }
 }
 
 pub struct SymbolTypeContext {
@@ -275,7 +285,7 @@ impl fmt::Debug for Substitution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{ ")?;
         for (k, v) in &self.subs {
-            write!(f, "{:?} => {:?}, ", k, v)?;
+            write!(f, "{:?} => {}, ", k, print_type(v))?;
         }
         write!(f, "}}")?;
         Ok(())
@@ -399,7 +409,7 @@ enum TypeRefinement {
 impl fmt::Debug for TypeRefinement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Lazy(t) => write!(f, "Lazy({:?})", t),
+            Self::Lazy(t) => write!(f, "Lazy({})", print_type(t)),
             Self::Unreachable => write!(f, "Unreachable"),
             Self::Tuple(ts) => {
                 write!(f, "(")?;

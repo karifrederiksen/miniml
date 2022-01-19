@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use ast::{print_module, print_type};
 use io::prelude::*;
 use prelude::{sym, Symbol};
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ fn main() {
         let src: &str = include_str!("./program");
         parser::parse_module(&format!("{}\n{}", prelude, src)).unwrap()
     };
-    println!("module:\n{:?}\n", module);
+    println!("===== FULL PROGRAM =====:\n{}\n", print_module(&module));
     {
         use trc::Error;
         let mut ctx = trc::SymbolTypeContext::new();
@@ -24,7 +25,11 @@ fn main() {
             Ok(()) => {}
             Err(Error::TupleArityMismatch) => println!("arity mismatch"),
             Err(Error::TypeMismatch((t1, t2))) => {
-                println!("type mismatch between {:?} and {:?}", t1, t2)
+                println!(
+                    "type mismatch between {} and {}",
+                    print_type(&t1),
+                    print_type(&t2)
+                )
             }
             Err(Error::NonExhaustiveMatch) => {
                 println!("non-exhaustive match detected")
@@ -33,6 +38,7 @@ fn main() {
     }
     let module_str = format!("{}", ast::print_module(&module));
 
+    fs::create_dir("output").unwrap_or(());
     fs::File::create("output/module")
         .unwrap()
         .write_all(module_str.as_bytes())
