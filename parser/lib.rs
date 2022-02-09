@@ -619,11 +619,7 @@ fn patterns(s: &[Token]) -> (&[Token], Option<(Span, Vec<a::Pattern>)>) {
     }
 }
 
-fn global_binding(
-    start: Idx,
-    recursive: bool,
-    s: &[Token],
-) -> IResult<&[Token], (Span, a::SymbolBinding)> {
+fn global_binding(start: Idx, s: &[Token]) -> IResult<&[Token], (Span, a::SymbolBinding)> {
     let (s, ()) = trivia1(s)?;
     let (s, (_, sym)) = token_symbol_lower(s)?;
     let (s, patterns) = patterns(s);
@@ -652,7 +648,6 @@ fn global_binding(
     }
 
     let bind = a::SymbolBinding {
-        recursive,
         bind: sym,
         type_: None,
         expr: e,
@@ -663,12 +658,7 @@ fn global_binding(
 fn statement(s: &[Token]) -> IResult<&[Token], Option<a::Statement>> {
     match s {
         [Token::Let(range), s @ ..] => {
-            let (s, (range, x)) = global_binding(range.start, false, s)?;
-            let st = a::Statement::SymbolBinding((range, x));
-            Ok((s, Some(st)))
-        }
-        [Token::Rec(range), s @ ..] => {
-            let (s, (range, x)) = global_binding(range.start, true, s)?;
+            let (s, (range, x)) = global_binding(range.start, s)?;
             let st = a::Statement::SymbolBinding((range, x));
             Ok((s, Some(st)))
         }

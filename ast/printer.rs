@@ -107,9 +107,8 @@ impl Printer {
     pub fn print_statement(&mut self, st: &Statement) {
         match st {
             Statement::SymbolBinding(st) => {
-                let decl_sym = if st.1.recursive { "rec" } else { "let" };
                 if let Some(type_) = &st.1.type_ {
-                    self.str(decl_sym);
+                    self.str("let");
                     self.space();
                     self.str(&st.1.bind.0);
                     self.space();
@@ -118,7 +117,7 @@ impl Printer {
                     self.print_type_scheme(type_);
                     self.newline();
                 }
-                self.str(decl_sym);
+                self.str("let");
                 self.space();
                 self.str(&st.1.bind.0);
                 self.space();

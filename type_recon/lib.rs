@@ -85,9 +85,8 @@ impl SymbolTypeContext {
             match st {
                 Statement::SymbolBinding((_, st)) => {
                     let mut gen = VariableTypeGenerator::new();
-                    if st.recursive {
-                        self.add_global_symbol(st.bind.clone(), gen.next_scheme());
-                    }
+                    // enable recursion
+                    self.add_global_symbol(st.bind.clone(), gen.next_scheme());
                     let ty = self.infer(&mut gen, &st.expr)?;
                     let ty = ty.generalize(&mut gen);
                     self.add_global_symbol(st.bind.clone(), ty.clone());

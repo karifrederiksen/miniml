@@ -8,7 +8,7 @@ let opt_map f x =
 # let incr : Int -> Int
 let incr = add 1
 
-rec fact n =
+let fact n =
     if eq n 0 then
         1
     else
@@ -16,18 +16,18 @@ rec fact n =
 
 type List a = Cons (a, List a) | Empty
 
-rec range from to =
+let range from to =
     if gte to from then
         Cons (to, (range from (sub to 1)))
     else
         Empty
 
-rec list_map f x =
+let list_map f x =
     match x
     | Cons (hd, tl) -> Cons (f hd, list_map f tl)
     | Empty -> Empty
 
-rec list_length_helper x count =
+let list_length_helper x count =
     match x
     | Cons (hd, tl) -> list_length_helper tl (add 1 count)
     | Empty -> count

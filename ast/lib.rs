@@ -154,7 +154,6 @@ impl Expr {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct SymbolBinding {
-    pub recursive: bool,
     pub bind: Symbol,
     pub type_: Option<TypeScheme>,
     pub expr: Expr,

@@ -42,8 +42,6 @@ pub enum Token {
     ConstrFalse(Span),
     #[token("let", span)]
     Let(Span),
-    #[token("rec", span)]
-    Rec(Span),
     #[token("in", span)]
     In(Span),
     #[token("if", span)]
@@ -106,7 +104,6 @@ impl Token {
             Token::ConstrTrue(x) => x.clone(),
             Token::ConstrFalse(x) => x.clone(),
             Token::Let(x) => x.clone(),
-            Token::Rec(x) => x.clone(),
             Token::In(x) => x.clone(),
             Token::If(x) => x.clone(),
             Token::Then(x) => x.clone(),
@@ -139,7 +136,6 @@ impl Token {
             Token::ConstrTrue(_) => "True".to_owned(),
             Token::ConstrFalse(_) => "False".to_owned(),
             Token::Let(_) => "let".to_owned(),
-            Token::Rec(_) => "rec".to_owned(),
             Token::In(_) => "in".to_owned(),
             Token::If(_) => "if".to_owned(),
             Token::Then(_) => "then".to_owned(),
